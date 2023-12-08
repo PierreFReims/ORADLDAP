@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-import configparser
+import sys
+from crawler import *
 from ldap3 import Server, Connection, SAFE_SYNC
 
-def ldap_query(config_file):
-    # Read the INI file
+def ldap_query(config_file=None):
     config = configparser.ConfigParser()
     config.read(config_file)
 
@@ -23,9 +23,12 @@ def ldap_query(config_file):
         conn.search(search_base=base_dn, search_filter=filter_str, attributes=attributes)
         for entry in conn.entries:
             print(entry.entry_dn)
-            for attr in attributes:
-                print(f"{attr}: {entry[attr]}")
+            #for attr in attributes:
+            #    print(f"{attr}: {entry[attr]}")
             print('-' * 30)
 
 if __name__ == "__main__":
-    ldap_query('conf.ini')
+    if (len(sys.argv) != 1):
+        Crawler(sys.argv[1])
+    else:
+        Crawler()
