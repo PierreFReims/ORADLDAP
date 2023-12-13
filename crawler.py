@@ -42,11 +42,13 @@ class ORADLDAP:
         except Exception as e:
             raise ValueError(f"Error establishing LDAP connection: {e}")
 
-    def _connect(self):
+    def _connect(self, user=None):
         if not self.connection:
             self.server = Server(self.uri, get_info=ALL)
-            self.connection = Connection(self.server, user=self.user, password=self.password, auto_bind=True)
-    
+            if user==ANONYMOUS:
+                self.connection = Connection(self.server, auto_bind=True)
+            else:
+                self.connection = Connection(self.server, user=self.user, password=self.password, auto_bind=True)
     def _disconnect(self):
         if self.connection:
             self.connection.unbind()
@@ -66,15 +68,27 @@ class ORADLDAP:
             self._disconnect()
         return naming_context
 
+    def check_anonymous_access(self):
+        try:
+            self._connect(user=ANONYMOUS)
+
+            # Si la connexion réussit, alors l'accès anonyme est autorisé
+            return True
+        except Exception as e:
+            # Si la connexion échoue, alors l'accès anonyme n'est pas autorisé
+            return False
+        finally:
+            self._disconnect()
     def get_config_context(self):
         try:
             self._connect()
-            #self.connection.search(search_base='', search_filter='(objectclass=*)', attributes=['configContext'], search_scope=BASE)
+            self.connection.search(search_base='', search_filter='(objectclass=*)', attributes=['*'],search_scope='BASE')
+            config_context = str(self.server.info).split("configContext:")[1].lstrip().split("\n")[0]
         except Exception as e:
             raise ValueError(f"Error retrieving config context: {e}")
         finally:
             self._disconnect()
-        #return config_context
+        return config_context
 
     def __del__(self):
         # Close the LDAP connection when the object is destroyed

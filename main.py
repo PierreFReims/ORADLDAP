@@ -8,3 +8,4 @@ if __name__ == "__main__":
     ldap_manager = ORADLDAP(sys.argv[1])
     ldap_manager.get_naming_context()
     ldap_manager.get_config_context()
+    print(ldap_manager.check_anonymous_access())
