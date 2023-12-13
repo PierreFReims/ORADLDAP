@@ -1,5 +1,6 @@
 import configparser
 from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS,ALL
+import re
 
 
 class ORADLDAP:
@@ -49,6 +50,7 @@ class ORADLDAP:
                 self.connection = Connection(self.server, auto_bind=True)
             else:
                 self.connection = Connection(self.server, user=self.user, password=self.password, auto_bind=True)
+    
     def _disconnect(self):
         if self.connection:
             self.connection.unbind()
@@ -68,17 +70,6 @@ class ORADLDAP:
             self._disconnect()
         return naming_context
 
-    def check_anonymous_access(self):
-        try:
-            self._connect(user=ANONYMOUS)
-
-            # Si la connexion réussit, alors l'accès anonyme est autorisé
-            return True
-        except Exception as e:
-            # Si la connexion échoue, alors l'accès anonyme n'est pas autorisé
-            return False
-        finally:
-            self._disconnect()
     def get_config_context(self):
         try:
             self._connect()
@@ -89,6 +80,42 @@ class ORADLDAP:
         finally:
             self._disconnect()
         return config_context
+
+    def check_anonymous_auth(self):
+        try:
+            self._connect(user=ANONYMOUS)
+            return True
+        except Exception as e:
+            return False
+        finally:
+            self._disconnect()
+    
+    def check_password_write_permission(self):
+        return False
+        
+    def check_anonymous_acl(self):
+        try:
+            self._connect()
+            self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
+            acls = str(self.connection.entries[0]).split("olcAccess:")[1].split("\n")
+            userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
+            by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
+            for acl in acls:
+                acl = acl.strip()
+                match = re.search(userPassword_attribute, acl)
+                if match:
+                    matches = by_pattern.findall(acl)
+                    # Check if 'anonymous' has permissions other than 'none'
+                    anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
+                    #if 'none' not in anonymous_permissions:
+                    #    print("Anonymous has permissions other than 'none'")
+                    return anonymous_permissions        
+        except Exception as e:
+            # Handle the exception as needed
+            print(f"Error checking anonymous ACL: {e}")
+            
+        finally:
+            self._disconnect()
 
     def __del__(self):
         # Close the LDAP connection when the object is destroyed
