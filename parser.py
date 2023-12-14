@@ -14,14 +14,14 @@ class OpenLDAPACLParser:
      -------------
     [
         {
-            "to": "userPassword",
+            "to": "attrs=userPassword",
             "by": [
                 {"entity": "self", "permission": "write"},
                 {"entity": "*", "permission": "none"}
             ]
         },
         {
-            "to": "shadowLastChange",
+            "to": "attrs=shadowLastChange",
             "by": [
                 {"entity": "self", "permission": "write"},
                 {"entity": "*", "permission": "read"}
@@ -61,10 +61,10 @@ class OpenLDAPACLParser:
             for acl in access_list:
                 acl_list.append(self.parse_acl(acl))
         return acl_list
+    
     """
-    Parse a single ACL line 
+    Parse a single ACL entry 
     """
-    #{0}to attrs=userPassword by self write by anonymous auth by * none
     def parse_acl(self, acl_text):
         acl = {'to': None, 'by': []}
         to_clause = acl_text.split('to')[1].strip().split("by")[0].strip()

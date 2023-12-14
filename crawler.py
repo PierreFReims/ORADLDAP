@@ -28,7 +28,6 @@ class ORADLDAP:
             config = configparser.ConfigParser()
             try:
                 config.read(config_path)
-
                 # Update values from the configuration file
                 self.user = config.get('auth', 'rootdn_user', fallback=default_config['rootdn_user'])
                 self.password = config.get('auth', 'rootdn_password', fallback=default_config['rootdn_password'])
@@ -120,7 +119,7 @@ class ORADLDAP:
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
             acls_entry = str(self.connection.entries[0])
             result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
-            print(result_string)
+            
             if acls_entry:
                 parser = OpenLDAPACLParser(acls_entry)
                 parser.display_acls()
