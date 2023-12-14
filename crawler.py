@@ -7,12 +7,6 @@ import re
 class ORADLDAP:
     def __init__(self, config_path=None):
 
-        # Initialize with default values
-        self.user = default_config['rootdn_user']
-        self.password = default_config['rootdn_password']
-        self.uri = default_config['uri']
-        self.base_dn = default_config['base_dn']
-        self.suffix = default_config['suffix']
         self.server = None
         self.connection = None
 
@@ -21,11 +15,11 @@ class ORADLDAP:
             try:
                 config.read(config_path)
                 # Update values from the configuration file
-                self.user = config.get('auth', 'rootdn_user', fallback=default_config['rootdn_user'])
-                self.password = config.get('auth', 'rootdn_password', fallback=default_config['rootdn_password'])
-                self.uri = config.get('auth', 'uri', fallback=default_config['uri'])
-                self.base_dn = config.get('auth', 'base_dn', fallback=default_config['base_dn'])
-                self.suffix = config.get('auth', 'suffix', fallback=default_config['suffix'])
+                self.user = config.get('auth', 'rootdn_user')
+                self.password = config.get('auth', 'rootdn_password')
+                self.uri = config.get('auth', 'uri')
+                self.base_dn = config.get('auth', 'base_dn')
+                self.suffix = config.get('auth', 'suffix')
 
             except configparser.Error as e:
                 raise ValueError(f"Error reading configuration: {e}")
