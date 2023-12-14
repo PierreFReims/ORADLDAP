@@ -6,14 +6,6 @@ import re
 
 class ORADLDAP:
     def __init__(self, config_path=None):
-        # Default configuration values
-        default_config = {
-            'rootdn_user': 'cn=admin,cn=config',
-            'rootdn_password': 'secret',
-            'uri': 'ldap://127.0.0.1:389',
-            'base_dn': '',
-            'suffix': '',
-        }
 
         # Initialize with default values
         self.user = default_config['rootdn_user']
