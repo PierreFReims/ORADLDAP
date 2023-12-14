@@ -1,4 +1,5 @@
 import configparser
+from parser import *
 from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS,ALL
 import re
 
@@ -89,10 +90,7 @@ class ORADLDAP:
             return False
         finally:
             self._disconnect()
-    
-    def check_password_write_permission(self):
-        return False
-        
+       
     def check_anonymous_acl(self):
         try:
             self._connect()
@@ -113,7 +111,45 @@ class ORADLDAP:
         except Exception as e:
             # Handle the exception as needed
             print(f"Error checking anonymous ACL: {e}")
-            
+        finally:
+            self._disconnect()
+
+    def check_all_acls(self):
+        try:
+            self._connect()
+            self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
+            acls_entry = str(self.connection.entries[0])
+            result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
+            print(result_string)
+            if acls_entry:
+                parser = OpenLDAPACLParser(acls_entry)
+                parser.display_acls()
+        except Exception as e:
+            # Handle the exception as needed
+            print(f"Error checking ACLs: {e}")
+        finally:
+            self._disconnect()
+
+    def check_password_write_permission(self):
+        try:
+            self._connect()
+            self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
+            acls = str(self.connection.entries[0]).split("olcAccess:")[1].split("\n")
+            userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
+            by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
+            for acl in acls:
+                acl = acl.strip()
+                match = re.search(userPassword_attribute, acl)
+                if match:
+                    matches = by_pattern.findall(acl)
+                    # Check if 'anonymous' has permissions other than 'none'
+                    anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
+                    #if 'none' not in anonymous_permissions:
+                    #    print("Anonymous has permissions other than 'none'")
+                    return anonymous_permissions        
+        except Exception as e:
+            # Handle the exception as needed
+            print(f"Error checking anonymous ACL: {e}")
         finally:
             self._disconnect()
 
@@ -121,91 +157,3 @@ class ORADLDAP:
         # Close the LDAP connection when the object is destroyed
         if self.connection:
             self.connection.unbind()
-
-
-class Crawler:
-    config = None
-    server = None
-    connection = None
-    suffix = None
-
-    user = None
-    password = None
-    uri = None
-    base_dn = None
-
-    def __init__(self, config_path=None):
-        if config_path:
-            config = configparser.ConfigParser()
-            config.read(config_path)
-
-            self.user = config.get('auth', 'rootdn_user')
-            self.password = config.get('auth', 'rootdn_password')
-            self.uri = config.get('auth', 'uri')
-            self.base_dn = config.get('auth', 'base_dn')
-            self.suffix = config.get('auth', 'base_dn')
-            self.server = Server('127.0.0.1',  get_info=all)
-            self.connection = Connection(self.server, auto_bind=True)
-            
-            print("Anonymous bind")
-            print(self.server.info)
-                
-            
-    def get_naming_context(self):
-
-        return naming_context
-
-    def check_ppolicy(self) -> bool:
-        try:
-            with Connection(self.uri, self.rootdn_user, self.rootdn_password, auto_bind=True) as conn:
-                conn.search(search_base='cn=config', search_filter='(objectClass=*)', search_scope=SUBTREE)
-                # Check if ppolicy module is loaded
-                #for attribute in conn.entries:
-                #print(attribute)
-                if 'olcOverlay' in attribute:
-                    if 'ppolicy' in attribute:
-                        print("[PPOLICY] - Enabled")
-                    else:
-                        print("[PPOLICY] - Disabled or not supported")
-                else:
-                    print("The olcModuleLoad attribute is not present in the server configuration.")
-
-        except Exception as e:
-            print(f"Error checking password policy: {e}")
-        
-    def check_acl(self) -> bool:
-        try:
-            with Connection(self.uri, self.rootdn_user, self.rootdn_password, auto_bind=True) as conn:
-                conn.search(search_base='cn=config', search_filter='(olcDatabase={1}mdb)', search_scope=SUBTREE, attributes=['olcAccess'])
-                attrs = str(conn.entries[0]).split('\n')
-                if conn.entries:
-                    print("[ACLs] - Enabled")
-                else:
-                    print("[ACLs] - Disabled or not supported")
-
-        except Exception as e:
-            print(f"Error checking ACLs: {e}")
-        return False
-
-    def check_users_password_expiration(self) -> bool:
-        attributes_check = ["pwdExpireWarning", "pwdMaxAge"]
-        try:
-            with Connection(self.uri, self.rootdn_user, self.rootdn_password, auto_bind=True) as conn:
-                conn.search(search_base=self.suffix, search_filter='(|(objectClass=person)(objectClass=inetOrgPerson)(objectClass=organizationalPerson))',attributes=attributes_check)
-            if conn.entries:
-                print("[User Password Expiration Date] - Enabled")
-            else:
-                print("[User Password Expiration Date] - Disabled or not supported")
-        except Exception as e:
-            print(f"Error checking attribute: {e}")
-            return False
-
-    def check_asleep_accounts(self) -> bool:
-        return False
-
-    
-    def Run(self):
-      print("Initialization...")
-      #self.check_ppolicy()  
-      #self.check_acl()
-      #self.check_users_password_expiration()
