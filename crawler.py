@@ -1,14 +1,14 @@
 import configparser
-from parser import *
+from parser import OpenLDAPACLParser
+from report import VulnerabilityReport
 from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS,ALL
 import re
 
-
 class ORADLDAP:
     def __init__(self, config_path=None):
-
         self.server = None
         self.connection = None
+        self.report = VulnerabilityReport()
 
         if config_path:
             config = configparser.ConfigParser()
@@ -20,7 +20,6 @@ class ORADLDAP:
                 self.uri = config.get('auth', 'uri')
                 self.base_dn = config.get('auth', 'base_dn')
                 self.suffix = config.get('auth', 'suffix')
-
             except configparser.Error as e:
                 raise ValueError(f"Error reading configuration: {e}")
         try:
@@ -70,6 +69,7 @@ class ORADLDAP:
     def check_anonymous_auth(self):
         try:
             self._connect(user=ANONYMOUS)
+            report.add_vulnerability('1','vuln_allow_anon_auth','Anonymous binding is allowed','disable anonymous binding')
             return True
         except Exception as e:
             return False
@@ -105,12 +105,39 @@ class ORADLDAP:
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
             acls_entry = str(self.connection.entries[0])
             result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
-            
             if acls_entry:
                 parser = OpenLDAPACLParser(acls_entry)
-                parser.display_acls()
+                acls = parser.get_acls()
+                dangerous_permissions = []
+                for acl_entry in acls:
+                    target_attribute = acl_entry.get('to', '')
+                    permissions = acl_entry.get('by', [])
+                    for permission in permissions:
+                        entity = permission.get('entity', '')
+                        permission_type = permission.get('permission', '')
+                        if permission_type == 'write' and entity != 'self':
+                            # Check for dangerous write permissions on attributes other than userPassword
+                            dangerous_permissions.append({
+                                'target_attribute': target_attribute,
+                                'entity': entity,
+                                'permission_type': permission_type
+                            })
+                        elif permission_type == 'auth' and entity == 'anonymous':
+                            # Check for dangerous auth permissions for anonymous users
+                            dangerous_permissions.append({
+                                'target_attribute': target_attribute,
+                                'entity': entity,
+                                'permission_type': permission_type
+                            })
+                # Print the results
+                if dangerous_permissions:
+                    print("Dangerous permissions found:")
+                    for entry in dangerous_permissions:
+                        print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
+                else:
+                    print("No dangerous permissions found.")  
+
         except Exception as e:
-            # Handle the exception as needed
             print(f"Error checking ACLs: {e}")
         finally:
             self._disconnect()
@@ -139,6 +166,8 @@ class ORADLDAP:
             self._disconnect()
 
     def __del__(self):
+        self.report.generate_report()
         # Close the LDAP connection when the object is destroyed
         if self.connection:
             self.connection.unbind()
+    

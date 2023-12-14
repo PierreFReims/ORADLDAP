@@ -59,6 +59,7 @@ class OpenLDAPACLParser:
             acl_text = result_string = re.sub(r'^\s+', '', acl_text, flags=re.MULTILINE)
             access_list = list(filter(None,re.split(r'\{\d+\}', acl_text)))
             for acl in access_list:
+                acl = acl.strip()
                 acl_list.append(self.parse_acl(acl))
         return acl_list
     
@@ -74,7 +75,7 @@ class OpenLDAPACLParser:
             acl['by'].append({'entity': match.group(1), 'permission': match.group(2)})
         return acl
 
-    def display_acls(self):
+    def display(self):
         for acl in self.acls:
             print(f" + {acl['to']}")
             for by_clause in acl['by']:
