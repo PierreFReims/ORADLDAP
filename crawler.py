@@ -1,4 +1,5 @@
 import configparser
+import yaml
 import time
 import ssl
 from parser import OpenLDAPACLParser
@@ -8,7 +9,7 @@ import re
 import logging
 
 class ORADLDAP:
-    def __init__(self, config_path='conf.ini'):
+    def __init__(self, config_path='conf.yaml'):
         print('Init...')
         self.config = configparser.ConfigParser()
         self.config_path = config_path
@@ -19,6 +20,7 @@ class ORADLDAP:
         self.server = None
         self.connection = None
         self.logging = None
+        self.domain_admins = []
         self.report = VulnerabilityReport()
         
         self._read_config()
@@ -137,11 +139,13 @@ class ORADLDAP:
                 # Print the results
                 if dangerous_permissions:
                     self.report.add_vulnerability('1','vuln_dangerous_acls','Permissions dangereuse sur le serveur','Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.','Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d\'écriture au compte administrateur.')
-                    print("Dangerous permissions found:")
+                    #print("Dangerous permissions found:")
                     for entry in dangerous_permissions:
-                        print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
+                        var = 'ok'
+                        #print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
                 else:
-                    print("No dangerous permissions found.")
+                    var = 'ok'
+                    #print("No dangerous permissions found.")
 
         except Exception as e:
             print(f"Error checking ACLs: {e}")
@@ -161,11 +165,12 @@ class ORADLDAP:
                     acls[-1]['to'] == '*'
                     and any(entry["entity"] == "*" and entry["permission"] == "none" for entry in acls[-1]['by'])
                 ):
-                    print('No permissions')
+                    var = 'ok'
+                    #print('No permissions')
                 else:
                     self.report.add_vulnerability('1','vuln_dangerous_default_acl','ACL par default dangereux','Si aucune règle d\'ACL n\'a été déclenchée, la dernière règle s\'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.',    
                     """dn: olcDatabase={1}mdb,cn=config\n changetype: modify\n replace: olcAccess\nolcAccess: {4}to * by * none""")
-                    print('Default ACL rule is dangerous')
+                    #print('Default ACL rule is dangerous')
         except Exception as e:
             print(f"Error checking ACLs: {e}")
         finally:
@@ -196,13 +201,16 @@ class ORADLDAP:
 
     def _read_config(self):
         try:
-            self.config.read(self.config_path)
-            self.server_uri = self.config.get('ldap', 'server_uri')
-            self.port = self.config.getint('ldap', 'port')
-            self.bind_dn = self.config.get('ldap', 'bind_dn')
-            self.bind_password = self.config.get('ldap', 'bind_password')
-            self.use_ldaps = self.config.getboolean('ldap', 'use_ldaps')
-            print('Reading conf..')
+            with open(self.config_path) as f:
+                data = yaml.safe_load(f)
+                self.server_uri = data['ldap']['server_uri']
+                self.port = data['ldap']['port']
+                self.bind_dn = data['ldap']['bind_dn']   
+                self.bind_password = data['ldap']['bind_password'] 
+                self.use_ldaps = data['ldap']['use_ldaps'] 
+                for domain_admin in data['ldap']['domain_admins']:
+                    self.domain_admins.append(domain_admin)
+                print('Reading conf..')
 
         except (configparser.Error, ValueError) as e:
             raise ValueError(f"Error reading configuration: {e}")
