@@ -1,40 +1,43 @@
 import configparser
+import time
+import ssl
 from parser import OpenLDAPACLParser
 from report import VulnerabilityReport
-from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS,ALL
+from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS, ALL,Tls
 import re
+import logging
 
 class ORADLDAP:
-    def __init__(self, config_path=None):
+    def __init__(self, config_path='conf.ini'):
+        print('Init...')
+        self.config = configparser.ConfigParser()
+        self.config_path = config_path
+        self.server_uri = None
+        self.bind_dn = None
+        self.bind_password = None
+        self.use_ldaps = False
         self.server = None
         self.connection = None
+        self.logging = None
         self.report = VulnerabilityReport()
-
-        if config_path:
-            config = configparser.ConfigParser()
-            try:
-                config.read(config_path)
-                # Update values from the configuration file
-                self.user = config.get('auth', 'rootdn_user')
-                self.password = config.get('auth', 'rootdn_password')
-                self.uri = config.get('auth', 'uri')
-                self.base_dn = config.get('auth', 'base_dn')
-                self.suffix = config.get('auth', 'suffix')
-            except configparser.Error as e:
-                raise ValueError(f"Error reading configuration: {e}")
+        
+        self._read_config()
+    def _connect(self):
         try:
-            self.server = Server(self.uri, get_info=ALL)
-            self.connection = Connection(self.server, user=self.user, password=self.password, auto_bind=True)
-        except Exception as e:
-            raise ValueError(f"Error establishing LDAP connection: {e}")
+            # Configure TLS if LDAPS is used
+            tls_configuration = None
+            if self.use_ldaps:
+                tls_configuration = Tls(validate=ssl.CERT_REQUIRED)
 
-    def _connect(self, user=None):
-        if not self.connection:
-            self.server = Server(self.uri, get_info=ALL)
-            if user==ANONYMOUS:
-                self.connection = Connection(self.server, auto_bind=True)
-            else:
-                self.connection = Connection(self.server, user=self.user, password=self.password, auto_bind=True)
+            # Create a server object
+            self.server = Server(f"{self.server_uri}:{self.port}", get_info=ALL, use_ssl=self.use_ldaps, tls=tls_configuration)
+
+            # Create a connection object
+            self.connection = Connection(self.server, user=self.bind_dn, password=self.bind_password, auto_bind=True)
+
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            self.connection = Connection(self.server, auto_bind=True)
     
     def _disconnect(self):
         if self.connection:
@@ -69,7 +72,7 @@ class ORADLDAP:
     def check_anonymous_auth(self):
         try:
             self._connect(user=ANONYMOUS)
-            report.add_vulnerability('1','vuln_allow_anon_auth','Anonymous binding is allowed','disable anonymous binding')
+            self.report.add_vulnerability('1','vuln_allow_anon_auth','Binding anonyme autorisé','Permet à une personne non autorisée d\'intérrégir avec le service et collecter des informations.','Désactiver la possibilité d’établir une connexion anonyme.')
             return True
         except Exception as e:
             return False
@@ -104,7 +107,9 @@ class ORADLDAP:
             self._connect()
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
             acls_entry = str(self.connection.entries[0])
+                
             result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
+            
             if acls_entry:
                 parser = OpenLDAPACLParser(acls_entry)
                 acls = parser.get_acls()
@@ -131,12 +136,36 @@ class ORADLDAP:
                             })
                 # Print the results
                 if dangerous_permissions:
+                    self.report.add_vulnerability('1','vuln_dangerous_acls','Permissions dangereuse sur le serveur','Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.','Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d\'écriture au compte administrateur.')
                     print("Dangerous permissions found:")
                     for entry in dangerous_permissions:
                         print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
                 else:
-                    print("No dangerous permissions found.")  
+                    print("No dangerous permissions found.")
 
+        except Exception as e:
+            print(f"Error checking ACLs: {e}")
+        finally:
+            self._disconnect()
+
+    def check_default_acl_rule(self):
+        try:
+            self._connect()
+            self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
+            acls_entry = str(self.connection.entries[0])
+            result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
+            if acls_entry:
+                parser = OpenLDAPACLParser(acls_entry)
+                acls = parser.get_acls()
+                if(
+                    acls[-1]['to'] == '*'
+                    and any(entry["entity"] == "*" and entry["permission"] == "none" for entry in acls[-1]['by'])
+                ):
+                    print('No permissions')
+                else:
+                    self.report.add_vulnerability('1','vuln_dangerous_default_acl','ACL par default dangereux','Si aucune règle d\'ACL n\'a été déclenchée, la dernière règle s\'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.',    
+                    """dn: olcDatabase={1}mdb,cn=config\n changetype: modify\n replace: olcAccess\nolcAccess: {4}to * by * none""")
+                    print('Default ACL rule is dangerous')
         except Exception as e:
             print(f"Error checking ACLs: {e}")
         finally:
@@ -165,8 +194,34 @@ class ORADLDAP:
         finally:
             self._disconnect()
 
-    def __del__(self):
+    def _read_config(self):
+        try:
+            self.config.read(self.config_path)
+            self.server_uri = self.config.get('ldap', 'server_uri')
+            self.port = self.config.getint('ldap', 'port')
+            self.bind_dn = self.config.get('ldap', 'bind_dn')
+            self.bind_password = self.config.get('ldap', 'bind_password')
+            self.use_ldaps = self.config.getboolean('ldap', 'use_ldaps')
+            print('Reading conf..')
+
+        except (configparser.Error, ValueError) as e:
+            raise ValueError(f"Error reading configuration: {e}")
+
+    def Run(self):
+        start_time = time.time()
+        # Security Checks
+        self.get_naming_context()
+        self.get_config_context()
+        self.check_anonymous_auth()
+        self.check_all_acls()
+        self.check_default_acl_rule()
         self.report.generate_report()
+        
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"Program execution time: {execution_time} seconds")
+
+    def __del__(self):
         # Close the LDAP connection when the object is destroyed
         if self.connection:
             self.connection.unbind()
