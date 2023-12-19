@@ -4,7 +4,7 @@ import time
 import ssl
 from parser import OpenLDAPACLParser
 from report import VulnerabilityReport
-from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS, ALL,Tls
+from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS, ALL,Tls, ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES
 import re
 import logging
 
@@ -21,9 +21,9 @@ class ORADLDAP:
         self.connection = None
         self.logging = None
         self.domain_admins = []
-        self.report = VulnerabilityReport()
-        
         self._read_config()
+        self.report = VulnerabilityReport(suffix="dc=example,dc=com")
+
 
     def _connect(self):
         try:
@@ -139,7 +139,7 @@ class ORADLDAP:
                             })
                 # Print the results
                 if dangerous_permissions:
-                    self.report.add_vulnerability('1','vuln_dangerous_acls','Permissions dangereuse sur le serveur','Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.','Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d\'écriture au compte administrateur.')
+                    self.report.add_vulnerability('1','vuln_dangerous_acls','Permissions dangereuses sur le serveur','Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.','Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d\'écriture au compte administrateur.')
                     #print("Dangerous permissions found:")
                     for entry in dangerous_permissions:
                         var = 'ok'
@@ -201,7 +201,7 @@ class ORADLDAP:
                         # Check the 'to' attribute after write permission
                         to_attribute = acl.get('to', '')
                         if 'userPassword' in to_attribute or '*' in to_attribute:
-                            self.report.add_vulnerability('1','vuln_userpassword_write_perm','Permissions en écriture sur un attribut userPassword','Les autorisations d\'écriture sur l\'attribut userPassword représentent un risque significatif pour la sécurité du système. Cela signifie que des entités non autorisées pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialité des informations sensibles.','Examiner et mettre à jour les contrôles d\'accès (ACL) pour l\'attribut userPassword')
+                            self.report.add_vulnerability('1','vuln_userpassword_write_perm','Permissions en ecriture sur un attribut userPassword','Les autorisations d\'ecriture sur l\'attribut userPassword representent un risque significatif pour la securite du systeme. Cela signifie que des entites non autorisees pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialite des informations sensibles.','Examiner et mettre a jour les controles d\'acces (ACL) pour l\'attribut userPassword')
                             # Additional checks or actions based on the 'to' attribute if needed
 
         except Exception as e:
@@ -210,6 +210,26 @@ class ORADLDAP:
         finally:
             self._disconnect()
 
+    def check_ppolicy(self):
+        try:
+            # Search for ppolicy configuration
+            self._connect()
+            self.connection.search(
+                search_base='cn=config',
+                search_filter='(objectClass=olcPpolicyConfig)',
+                search_scope=SUBTREE,
+                attributes=[ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES]
+            )
+            if not self.connection.entries:
+                self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','')
+
+        except Exception as e:
+            print(f"Error checking ppolicy: {e}")
+            return False
+
+        finally:
+            self._disconnect()
+  
     def _read_config(self):
         try:
             with open(self.config_path) as f:
@@ -235,6 +255,7 @@ class ORADLDAP:
         self.check_all_acls()
         self.check_default_acl_rule()
         self.check_password_write_permission()
+        self.check_ppolicy()
         self.report.generate_report()
         
         end_time = time.time()
