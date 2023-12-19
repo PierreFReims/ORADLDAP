@@ -8,12 +8,24 @@
 <ol>
 <li>
 <h1>description de la vulnérabilité</h1>
+<p>Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.</p>
+<h1>recommandation</h1>
+<p> Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d'écriture au compte administrateur.<p>
+</li>
+<li>
+<h1>description de la vulnérabilité</h1>
 <p>Si aucune règle d'ACL n'a été déclenchée, la dernière règle s'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.</p>
 <h1>recommandation</h1>
 <p> dn: olcDatabase={1}mdb,cn=config
  changetype: modify
  replace: olcAccess
 olcAccess: {4}to * by * none<p>
+</li>
+<li>
+<h1>description de la vulnérabilité</h1>
+<p>Les autorisations d'écriture sur l'attribut userPassword représentent un risque significatif pour la sécurité du système. Cela signifie que des entités non autorisées pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialité des informations sensibles.</p>
+<h1>recommandation</h1>
+<p> Examiner et mettre à jour les contrôles d'accès (ACL) pour l'attribut userPassword<p>
 </li>
 </ol>
 </body>

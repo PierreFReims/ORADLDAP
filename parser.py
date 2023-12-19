@@ -69,7 +69,10 @@ class OpenLDAPACLParser:
     def parse_acl(self, acl_text):
         acl = {'to': None, 'by': []}
         to_clause = acl_text.split('to')[1].strip().split("by")[0].strip()
-        acl['to'] = to_clause
+        if(to_clause[0:2] == 'dn'):
+            acl['to'] = to_clause[4:-1]
+        else:
+            acl['to'] = to_clause
         by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
         for match in by_pattern.finditer(acl_text):
             acl['by'].append({'entity': match.group(1), 'permission': match.group(2)})

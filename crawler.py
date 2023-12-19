@@ -24,6 +24,7 @@ class ORADLDAP:
         self.report = VulnerabilityReport()
         
         self._read_config()
+
     def _connect(self):
         try:
             # Configure TLS if LDAPS is used
@@ -176,23 +177,33 @@ class ORADLDAP:
         finally:
             self._disconnect()
 
+    """
+    Check users that have write permissions on the userPassword attribute
+    You can define management users that are supposed to have those permissions in the conf.yaml file 
+    """
     def check_password_write_permission(self):
+        users_to_check = self.domain_admins
+        users_to_check.append("self")
+        users_with_write_permissions = []
         try:
             self._connect()
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-            acls = str(self.connection.entries[0]).split("olcAccess:")[1].split("\n")
-            userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
-            by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
+            acls_entry = str(self.connection.entries[0])
+            parser = OpenLDAPACLParser(acls_entry)
+            acls = parser.get_acls()
             for acl in acls:
-                acl = acl.strip()
-                match = re.search(userPassword_attribute, acl)
-                if match:
-                    matches = by_pattern.findall(acl)
-                    # Check if 'anonymous' has permissions other than 'none'
-                    anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
-                    #if 'none' not in anonymous_permissions:
-                    #    print("Anonymous has permissions other than 'none'")
-                    return anonymous_permissions        
+                by_rules = acl.get('by', [])
+                for rule in by_rules:
+                    entity = rule.get('entity', '')
+                    permission = rule.get('permission', '')
+                    # Check for write permission first
+                    if permission == 'write' and (entity == '*' or entity not in users_to_check):
+                        # Check the 'to' attribute after write permission
+                        to_attribute = acl.get('to', '')
+                        if 'userPassword' in to_attribute or '*' in to_attribute:
+                            self.report.add_vulnerability('1','vuln_userpassword_write_perm','Permissions en écriture sur un attribut userPassword','Les autorisations d\'écriture sur l\'attribut userPassword représentent un risque significatif pour la sécurité du système. Cela signifie que des entités non autorisées pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialité des informations sensibles.','Examiner et mettre à jour les contrôles d\'accès (ACL) pour l\'attribut userPassword')
+                            # Additional checks or actions based on the 'to' attribute if needed
+
         except Exception as e:
             # Handle the exception as needed
             print(f"Error checking anonymous ACL: {e}")
@@ -208,7 +219,7 @@ class ORADLDAP:
                 self.bind_dn = data['ldap']['bind_dn']   
                 self.bind_password = data['ldap']['bind_password'] 
                 self.use_ldaps = data['ldap']['use_ldaps'] 
-                for domain_admin in data['ldap']['domain_admins']:
+                for domain_admin in data['ldap']['admins_dn']:
                     self.domain_admins.append(domain_admin)
                 print('Reading conf..')
 
@@ -223,6 +234,7 @@ class ORADLDAP:
         self.check_anonymous_auth()
         self.check_all_acls()
         self.check_default_acl_rule()
+        self.check_password_write_permission()
         self.report.generate_report()
         
         end_time = time.time()
