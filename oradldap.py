@@ -197,7 +197,7 @@ class ORADLDAP:
                         # Check the 'to' attribute after write permission
                         to_attribute = acl.get('to', '')
                         if 'userPassword' in to_attribute or '*' in to_attribute:
-                            self.report.add_vulnerability('1','vuln_userpassword_write_perm','Permissions en ecriture sur un attribut userPassword','Les autorisations d\'ecriture sur l\'attribut userPassword representent un risque significatif pour la securite du systeme. Cela signifie que des entites non autorisees pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialite des informations sensibles.','Examiner et mettre a jour les controles d\'acces (ACL) pour l\'attribut userPassword')
+                            self.report.add_vulnerability('1','vuln_userpassword_write_perm','Permissions en écriture sur un attribut userPassword','Les autorisations d\'ecriture sur l\'attribut userPassword representent un risque significatif pour la securite du systeme. Cela signifie que des entites non autorisees pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialite des informations sensibles.','Examiner et mettre a jour les controles d\'acces (ACL) pour l\'attribut userPassword')
                             # Additional checks or actions based on the 'to' attribute if needed
 
         except Exception as e:
@@ -300,6 +300,7 @@ class ORADLDAP:
 
     def Run(self):
         start_time = time.time()
+
         # Security Checks
         self.get_naming_context()
         self.get_config_context()

@@ -27,6 +27,12 @@ class VulnerabilityReport:
         file.write('<style> .hidden { display: none; } </style>\n')
 
     def write_report_heading(self, file):
+        file.write("""<nav class="navbar">
+  <a class="navbar-brand">
+    <img src="./anfsi_logo.jpeg" width="30" height="30" class="d-inline-block align-top rounded ms-2" alt="">
+    <span class="text_navbar" >Points de contrôle OpenLDAP</span>
+  </a>
+</nav>""")
         file.write('<h1 class="text-center">Rapport de sécurité</h1>\n')
         if self.suffix is not None:
             file.write('<p class="text-center">{0}</p>\n'.format(self.suffix))
@@ -53,7 +59,7 @@ class VulnerabilityReport:
 
             # Add JavaScript to toggle visibility of the hidden rows
             file.write(f'<tr id="{description_row_id}" class="table-light" style="display: none;"><td colspan=5><div><h4>Description de la Vulnérabilité</h4><p>{vuln.description}</p></div></td></tr>')
-            file.write(f'<tr id="{recommendation_row_id}" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recomandation</h4><p>{vuln.recommendation}</p></div></td></tr>')
+            file.write(f'<tr id="{recommendation_row_id}" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recommandation</h4><p>{vuln.recommendation}</p></div></td></tr>')
         file.write('<script>'
                'function toggleDetails(rowId, descriptionRowId, recommendationRowId) {'
                'var descriptionRow = document.getElementById(descriptionRowId);'
