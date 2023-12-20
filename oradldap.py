@@ -4,7 +4,7 @@ import time
 import ssl
 from parser import OpenLDAPACLParser
 from report import VulnerabilityReport
-from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS, ALL,Tls, ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES
+from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS, ALL, Tls, ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES
 import re
 import logging
 
@@ -23,7 +23,7 @@ class ORADLDAP:
         self.logging = None
         self.domain_admins = []
         self._read_config()
-        self.report = VulnerabilityReport(suffix="dc=example,dc=com")
+        self.report = VulnerabilityReport(suffix=self.get_naming_context())
 
     def _connect(self):
         try:
@@ -96,8 +96,8 @@ class ORADLDAP:
                     matches = by_pattern.findall(acl)
                     # Check if 'anonymous' has permissions other than 'none'
                     anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
-                    #if 'none' not in anonymous_permissions:
-                    #    print("Anonymous has permissions other than 'none'")
+                    if 'none' not in anonymous_permissions:
+                        self.report.add_vulnerability('1','vuln_anonymous_dangerous_perms','Permissions dangereuses pour un utilisateur non authentifié','Un utilisateur non authentifié a des permissions autres que \'none\' sur certains attributs','Il est recommandé de donner des permissions \'none\' à utilisateurs anonymes, ou configurer une règle par défault qui englobe certains ce type d\'utilisateurs')
                     return anonymous_permissions        
         except Exception as e:
             # Handle the exception as needed
@@ -177,10 +177,6 @@ class ORADLDAP:
         finally:
             self._disconnect()
 
-    """
-    Check users that have write permissions on the userPassword attribute
-    You can define management users that are supposed to have those permissions in the conf.yaml file 
-    """
     def check_password_write_permission(self):
         users_to_check = self.domain_admins
         users_to_check.append("self")
@@ -230,21 +226,55 @@ class ORADLDAP:
         finally:
             self._disconnect()
 
-    def check_ldap_ssf(self,min_ssf_threshold=128):
+    def check_user_password_encryption(self):
+        try:
+            # Configure TLS if LDAPS is used
+            tls_configuration = None
+            # Create a server object
+            self.server = Server(f"{self.server_uri}:{self.port}", get_info=ALL, use_ssl=self.use_ldaps, tls=tls_configuration)
+
+            # Create a connection object
+            self.connection = Connection(self.server, user="cn=admin,dc=example,dc=com", password='secret', auto_bind=True)
+            search_filter = '(objectClass=inetOrgPerson)'
+            self.connection.search(
+                search_base='dc=example,dc=com',
+                search_filter=search_filter,
+                search_scope=SUBTREE,
+                attributes=['userPassword']
+            )
+            if self.connection.entries:
+                for attribute in self.connection.entries:
+                    user_password = attribute.userPassword.value.decode('utf-8')
+                    if not re.match(r'{[^}]+}', user_password):
+                        self.report.add_vulnerability('1','vuln_no_password_encryption','Mot de passe stocké en clair','Au moins un mots de passe utilisateurs est stocké sans chiffrement ni hachage, ce qui expose les données sensibles à un risque élevé en cas de violation de la sécurité.','Utilisation d\'un algorithme de hashage pour stocker les mots de passe')
+                        break
+        except Exception as e:
+            print(f"Error checking ACLs: {e}")
+        finally:
+            self._disconnect()
+
+    def check_ldap_ssf(self, username=None, password=None, min_ssf_threshold=128):
         try:
             # Establish an LDAPS connection
-            server = Server(self.server, use_ssl=True, get_info=ALL)
-            connection = Connection(server, user=self.bind_dn, password=self.bind_password, auto_bind=True)
+            server = Server(self.server_uri, use_ssl=True, get_info=ALL)
+            connection = Connection(server, user=username, password=password, auto_bind=True)
 
-            # Retrieve the SSF value
-            ssf_value = connection.tls_in_effect.get("ssf")
-            # Verify the SSF value against the threshold
-            if ssf_value is not None and ssf_value >= min_ssf_threshold:
-                print(f"SSL/TLS connection is secure. SSF value: {ssf_value}")
-                connection.unbind()
-                return True
+            # Check if TLS/SSL is in effect
+            if connection.tls_in_effect is not None:
+                # Retrieve the SSF value
+                ssf_value = connection.tls_in_effect.get("ssf")
+
+                # Verify the SSF value against the threshold
+                if ssf_value is not None and ssf_value >= min_ssf_threshold:
+                    print(f"SSL/TLS connection is secure. SSF value: {ssf_value}")
+                    connection.unbind()
+                    return True
+                else:
+                    print(f"SSL/TLS connection is not secure. SSF value is below the threshold.")
+                    connection.unbind()
+                    return False
             else:
-                print(f"SSL/TLS connection is not secure. SSF value is below the threshold.")
+                print("TLS/SSL is not in effect. Connection may not be secure.")
                 connection.unbind()
                 return False
 
@@ -279,7 +309,8 @@ class ORADLDAP:
         self.check_password_write_permission()
         self.check_ppolicy()
         self.report.generate_report()
-        self.check_ldap_ssf()
+        #self.check_ldap_ssf()
+        self.check_user_password_encryption()
         end_time = time.time()
         execution_time = round(end_time - start_time,2)
         print(f"Program execution time: {execution_time} seconds")
