@@ -217,7 +217,7 @@ class ORADLDAP:
                 attributes=[ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES]
             )
             if not self.connection.entries:
-                self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','')
+                self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer le module ppolicy')
 
         except Exception as e:
             print(f"Error checking ppolicy: {e}")
