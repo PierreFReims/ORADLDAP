@@ -23,7 +23,7 @@ class VulnerabilityReport:
             self.write_html_footer(file)
 
     def write_html_header(self, file):
-        file.write('<html>\n<head>\n<title>Vulnerability Report</title>\n</head>\n<link href="./bootstrap.min.css" rel="stylesheet">\n<meta charset="utf-8"><body>\n')
+        file.write('<html>\n<head>\n<title>Vulnerability Report</title>\n</head>\n<link href="./style.css" rel="stylesheet"><link href="./bootstrap.min.css" rel="stylesheet">\n<meta charset="utf-8"><body>\n')
         file.write('<style> .hidden { display: none; } </style>\n')
 
     def write_report_heading(self, file):
@@ -48,12 +48,12 @@ class VulnerabilityReport:
             recommendation_row_id = f'recommendationRow{vuln.id}'
 
             file.write(f'<tr class="table-danger" onclick="toggleDetails(\'{row_id}\', \'{description_row_id}\', \'{recommendation_row_id}\')">'
-                    f'<th scope="row"><span class="level_{vuln.level}">{vuln.level}</span></th><td class="text-danger">{vuln.title}</td><td class="text-danger">{vuln.id}</td>'
+                    f'<th scope="row"><span class="level_{vuln.level} align-middle">{vuln.level}</span></th><td class="text-danger align-middle">{vuln.title}</td><td class="text-danger align-middle">{vuln.id}</td>'
                     f'</tr>')
 
             # Add JavaScript to toggle visibility of the hidden rows
-            file.write(f'<tr id="{description_row_id}" class="table-light" style="display: none;"><td colspan=5><div><h2>Description de la Vulnérabilité</h2><p>{vuln.description}</p></div></td></tr>')
-            file.write(f'<tr id="{recommendation_row_id}" class="table-primary" style="display: none;"><td colspan=5><div><h2>Recomandation</h2><p>{vuln.recommendation}</p></div></td></tr>')
+            file.write(f'<tr id="{description_row_id}" class="table-light" style="display: none;"><td colspan=5><div><h4>Description de la Vulnérabilité</h4><p>{vuln.description}</p></div></td></tr>')
+            file.write(f'<tr id="{recommendation_row_id}" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recomandation</h4><p>{vuln.recommendation}</p></div></td></tr>')
         file.write('<script>'
                'function toggleDetails(rowId, descriptionRowId, recommendationRowId) {'
                'var descriptionRow = document.getElementById(descriptionRowId);'
