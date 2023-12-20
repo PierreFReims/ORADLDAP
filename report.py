@@ -48,11 +48,11 @@ class VulnerabilityReport:
             recommendation_row_id = f'recommendationRow{vuln.id}'
 
             file.write(f'<tr class="table-danger" onclick="toggleDetails(\'{row_id}\', \'{description_row_id}\', \'{recommendation_row_id}\')">'
-                    f'<th scope="row">{vuln.level}</th><td>{vuln.title}</td><td>{vuln.id}</td>'
+                    f'<th scope="row"><span class="level_{vuln.level}">{vuln.level}</span></th><td class="text-danger">{vuln.title}</td><td class="text-danger">{vuln.id}</td>'
                     f'</tr>')
 
             # Add JavaScript to toggle visibility of the hidden rows
-            file.write(f'<tr id="{description_row_id}" class="table-secondary" style="display: none;"><td colspan=5><div><h2>Description de la Vulnérabilité</h2><p>{vuln.description}</p></div></td></tr>')
+            file.write(f'<tr id="{description_row_id}" class="table-light" style="display: none;"><td colspan=5><div><h2>Description de la Vulnérabilité</h2><p>{vuln.description}</p></div></td></tr>')
             file.write(f'<tr id="{recommendation_row_id}" class="table-primary" style="display: none;"><td colspan=5><div><h2>Recomandation</h2><p>{vuln.recommendation}</p></div></td></tr>')
         file.write('<script>'
                'function toggleDetails(rowId, descriptionRowId, recommendationRowId) {'

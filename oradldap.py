@@ -308,9 +308,11 @@ class ORADLDAP:
         self.check_default_acl_rule()
         self.check_password_write_permission()
         self.check_ppolicy()
-        self.report.generate_report()
         #self.check_ldap_ssf()
         self.check_user_password_encryption()
+        
+        # Report Generation
+        self.report.generate_report()
         end_time = time.time()
         execution_time = round(end_time - start_time,2)
         print(f"Program execution time: {execution_time} seconds")
