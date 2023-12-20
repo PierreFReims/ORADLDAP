@@ -1,0 +1,10 @@
+ldap:
+  server_uri: ldap://127.0.0.1
+  port: 389
+  bind_dn: cn=admin,dc=my-company,dc=com
+  bind_password: JonSn0w
+  use_ldaps: false  
+  admins_dn:
+    - cn=admin,dc=example,dc=com
+    - cn=Manager,dc=example,dc=com
+

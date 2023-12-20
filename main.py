@@ -6,5 +6,8 @@ from parser import *
 
 if __name__ == "__main__":
     #crawler.Run()
-    ldap_manager = ORADLDAP(sys.argv[1])
+    if len(sys.argv) > 1:
+        ldap_manager = ORADLDAP(sys.argv[1])
+    else:
+        ldap_manager = ORADLDAP()
     ldap_manager.Run()

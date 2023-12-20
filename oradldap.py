@@ -5,6 +5,7 @@ import ssl
 from parser import OpenLDAPACLParser
 from report import VulnerabilityReport
 from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS, ALL, Tls, ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES
+from ldap3.core.exceptions import *
 import re
 import logging
 
@@ -37,10 +38,11 @@ class ORADLDAP:
 
             # Create a connection object
             self.connection = Connection(self.server, user=self.bind_dn, password=self.bind_password, auto_bind=True)
-
+        
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             self.connection = Connection(self.server, auto_bind=True)
+
     
     def _disconnect(self):
         if self.connection:
@@ -211,14 +213,17 @@ class ORADLDAP:
             # Search for ppolicy configuration
             self._connect()
             self.connection.search(
-                search_base='cn=config',
+                search_base=self.get_config_context(),
                 search_filter='(objectClass=olcPpolicyConfig)',
                 search_scope=SUBTREE,
                 attributes=[ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES]
             )
             if not self.connection.entries:
                 self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer le module ppolicy')
-
+        
+        except LDAPObjectClassError as e:
+            # Handle the specific LDAPObjectClassError for invalid object class
+            self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer le module ppolicy')
         except Exception as e:
             print(f"Error checking ppolicy: {e}")
             return False
