@@ -1,0 +1,27 @@
+.navbar {
+	background-color: rgb(18, 41, 77);
+	display: flex;
+	-moz-box-align: center;
+	align-items: center;
+	padding: 0.45rem 0.9rem;
+}
+
+.text_navbar {
+	color: rgba(255, 255, 255, 0.8);
+}
+
+.level_1 {
+	font-family: sans-serif;
+	display: inline-block;
+	padding: 0.25em 0.4em;
+	margin-left: 2px;
+	margin-right: 2px;
+	font-weight: 700;
+	line-height: 1;
+	text-align: center;
+	white-space: nowrap;
+	vertical-align: baseline;
+	border-radius: 0.25rem;
+	color: rgb(255, 255, 255);
+	background-color: rgb(220, 53, 69);
+}

@@ -2,31 +2,26 @@
 <head>
 <title>Vulnerability Report</title>
 </head>
-<link href="./bootstrap.min.css" rel="stylesheet">
-<body>
-<h1>Vulnerability Report</h1>
-<ol>
-<li>
-<h1>description de la vulnérabilité</h1>
-<p>Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.</p>
-<h1>recommandation</h1>
-<p> Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d'écriture au compte administrateur.<p>
-</li>
-<li>
-<h1>description de la vulnérabilité</h1>
-<p>Si aucune règle d'ACL n'a été déclenchée, la dernière règle s'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.</p>
-<h1>recommandation</h1>
-<p> dn: olcDatabase={1}mdb,cn=config
+<link href="./style.css" rel="stylesheet"><link href="./bootstrap.min.css" rel="stylesheet">
+<meta charset="utf-8"><body>
+<style> .hidden { display: none; } </style>
+<nav class="navbar">
+  <a class="navbar-brand">
+    <img src="./anfsi_logo.jpeg" width="30" height="30" class="d-inline-block align-top rounded ms-2" alt="">
+    <span class="text_navbar" >Points de contrôle OpenLDAP</span>
+  </a>
+</nav><h1 class="text-center">Rapport de sécurité</h1>
+<p class="text-center">dc=example,dc=com</p>
+<table class="table table-bordered table-light">
+  <thead>
+    <tr>
+      <th scope="col">Niveau</th>
+      <th scope="col">Titre</th>
+      <th scope="col">id</th>
+    </tr>
+  </thead>
+  <tbody><tr class="table-danger" onclick="toggleDetails('vulnRowvuln_dangerous_acls', 'descriptionRowvuln_dangerous_acls', 'recommendationRowvuln_dangerous_acls')"><th scope="row"><span class="level_1 align-middle">1</span></th><td class="text-danger align-middle">Permissions dangereuses sur le serveur</td><td class="text-danger align-middle">vuln_dangerous_acls</td></tr><tr id="descriptionRowvuln_dangerous_acls" class="table-light" style="display: none;"><td colspan=5><div><h4>Description de la Vulnérabilité</h4><p>Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.</p></div></td></tr><tr id="recommendationRowvuln_dangerous_acls" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recommandation</h4><p>Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d'écriture au compte administrateur.</p></div></td></tr><tr class="table-danger" onclick="toggleDetails('vulnRowvuln_dangerous_default_acl', 'descriptionRowvuln_dangerous_default_acl', 'recommendationRowvuln_dangerous_default_acl')"><th scope="row"><span class="level_1 align-middle">1</span></th><td class="text-danger align-middle">ACL par default dangereux</td><td class="text-danger align-middle">vuln_dangerous_default_acl</td></tr><tr id="descriptionRowvuln_dangerous_default_acl" class="table-light" style="display: none;"><td colspan=5><div><h4>Description de la Vulnérabilité</h4><p>Si aucune règle d'ACL n'a été déclenchée, la dernière règle s'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.</p></div></td></tr><tr id="recommendationRowvuln_dangerous_default_acl" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recommandation</h4><p>dn: olcDatabase={1}mdb,cn=config
  changetype: modify
  replace: olcAccess
-olcAccess: {4}to * by * none<p>
-</li>
-<li>
-<h1>description de la vulnérabilité</h1>
-<p>Les autorisations d'écriture sur l'attribut userPassword représentent un risque significatif pour la sécurité du système. Cela signifie que des entités non autorisées pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialité des informations sensibles.</p>
-<h1>recommandation</h1>
-<p> Examiner et mettre à jour les contrôles d'accès (ACL) pour l'attribut userPassword<p>
-</li>
-</ol>
-</body>
+olcAccess: {4}to * by * none</p></div></td></tr><tr class="table-danger" onclick="toggleDetails('vulnRowvuln_userpassword_write_perm', 'descriptionRowvuln_userpassword_write_perm', 'recommendationRowvuln_userpassword_write_perm')"><th scope="row"><span class="level_1 align-middle">1</span></th><td class="text-danger align-middle">Permissions en écriture sur un attribut userPassword</td><td class="text-danger align-middle">vuln_userpassword_write_perm</td></tr><tr id="descriptionRowvuln_userpassword_write_perm" class="table-light" style="display: none;"><td colspan=5><div><h4>Description de la Vulnérabilité</h4><p>Les autorisations d'ecriture sur l'attribut userPassword representent un risque significatif pour la securite du systeme. Cela signifie que des entites non autorisees pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialite des informations sensibles.</p></div></td></tr><tr id="recommendationRowvuln_userpassword_write_perm" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recommandation</h4><p>Examiner et mettre a jour les controles d'acces (ACL) pour l'attribut userPassword</p></div></td></tr><tr class="table-danger" onclick="toggleDetails('vulnRowvuln_missing_ppolicy', 'descriptionRowvuln_missing_ppolicy', 'recommendationRowvuln_missing_ppolicy')"><th scope="row"><span class="level_1 align-middle">1</span></th><td class="text-danger align-middle">Absence de politique de mots de passe</td><td class="text-danger align-middle">vuln_missing_ppolicy</td></tr><tr id="descriptionRowvuln_missing_ppolicy" class="table-light" style="display: none;"><td colspan=5><div><h4>Description de la Vulnérabilité</h4><p>En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.</p></div></td></tr><tr id="recommendationRowvuln_missing_ppolicy" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recommandation</h4><p>Activer le module ppolicy</p></div></td></tr><tr class="table-danger" onclick="toggleDetails('vulnRowvuln_no_password_encryption', 'descriptionRowvuln_no_password_encryption', 'recommendationRowvuln_no_password_encryption')"><th scope="row"><span class="level_1 align-middle">1</span></th><td class="text-danger align-middle">Mot de passe stocké en clair</td><td class="text-danger align-middle">vuln_no_password_encryption</td></tr><tr id="descriptionRowvuln_no_password_encryption" class="table-light" style="display: none;"><td colspan=5><div><h4>Description de la Vulnérabilité</h4><p>Au moins un mots de passe utilisateurs est stocké sans chiffrement ni hachage, ce qui expose les données sensibles à un risque élevé en cas de violation de la sécurité.</p></div></td></tr><tr id="recommendationRowvuln_no_password_encryption" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recommandation</h4><p>Utilisation d'un algorithme de hashage pour stocker les mots de passe</p></div></td></tr><script>function toggleDetails(rowId, descriptionRowId, recommendationRowId) {var descriptionRow = document.getElementById(descriptionRowId);var recommendationRow = document.getElementById(recommendationRowId);descriptionRow.style.display = (descriptionRow.style.display === "none") ? "table-row" : "none";recommendationRow.style.display = (recommendationRow.style.display === "none") ? "table-row" : "none";}</script></tbody></table></body>
 </html>
