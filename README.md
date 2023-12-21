@@ -13,8 +13,8 @@ pip3 install -r requirements.txt
 
 ## Usage
 
+>Administrator privileges on the DIT & on the cn=config are required 
+
 ```bash
 ./main.py conf.yaml
 ```
-
->Administrator privileges n the DIT & on the cn=config are required 
