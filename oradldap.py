@@ -24,22 +24,32 @@ class ORADLDAP:
         self.server = None
         self.connection = None
         self.logging = None
-        self.domain_admins = []
+        self.critical_ous = []
         self._read_config()
-        self.report = VulnerabilityReport(suffix=self.naming_context)
+        if self.admin_password == None:
+            self.admin_password = input()
+        self.report = VulnerabilityReport()
 
-    def _connect(self):
+    def _connect(self,anonymous=False,fallback=True):
+        if anonymous:
+            self._connect_anonymous_first(fallback=fallback)
+        else:
+            self._connect_authenticated_first(fallback=fallback)
+            
+    def _connect_authenticated_first(self,fallback=True):
         # Configure TLS if LDAPS is used
         tls_configuration = None
         if self.use_ldaps:
             tls_configuration = Tls(validate=ssl.CERT_REQUIRED)
 
         # Create a server object
-        self.server = Server(self.server_uri, port=self.port, get_info=ALL, use_ssl=self.use_ldaps, tls=tls_configuration)
+        self.server = Server(self.server_uri, port=self.port, get_info=ALL, use_ssl=self.use_ssl, tls=tls_configuration)
 
         try:
             # Attempt an authenticated bind
-            self.connection = Connection(self.server, user=self.bind_dn, password=self.bind_password,auto_bind=True)
+            self.connection = Connection(self.server, user=self.bind_dn, password=self.bind_password, auto_bind=True)
+            if self.use_ssl:
+                self.connection.start_tls()
             print('Authenticated mode')
 
         except LDAPBindError as auth_error:
@@ -47,19 +57,49 @@ class ORADLDAP:
 
             try:
                 # Reset the connection for an anonymous bind fallback
-                self.connection = Connection(self.server)
-                # define the connection
-                c = Connection(self.server)  # define an ANONYMOUS connection
-                # perform the Bind operation
-                if not c.bind():
-                    print("Anonymous bind not allowed, Abording...")
-                    sys.exit(-1)
+                self.connection.unbind()
+                self.connection = Connection(self.server, auto_bind=True)
                 print('Anonymous mode (fallback)')
 
             except LDAPBindError as anonymous_error:
                 print(f"Anonymous LDAP bind error: {anonymous_error}")
                 sys.exit(-1)
-            
+        except LDAPSocketOpenError as e:
+            print('Ouverture de la socket impossible...')
+            sys.exit(-1)
+
+    def _connect_anonymous_first(self,fallback=True):
+        # Configure TLS if LDAPS is used
+        tls_configuration = None
+        if self.use_ldaps:
+            tls_configuration = Tls(validate=ssl.CERT_REQUIRED)
+        # Create a server object
+        self.server = Server(self.server_uri, port=self.port, get_info=ALL, use_ssl=self.use_ssl, tls=tls_configuration)
+        try:
+            if fallback:
+            # Attempt an anonymous bind
+                self.connection = Connection(self.server, auto_bind=True)
+                if self.use_ssl:
+                    self.connection.start_tls()
+                print('Anonymous mode')
+        except LDAPSocketOpenError as e:
+            print('Ouverture de la socket impossible...')
+            sys.exit(-1)
+
+        except LDAPBindError as anonymous_error:
+            print(f"Anonymous LDAP bind error: anonymous bind not allowed")
+            try:
+                if fallback:
+                    # Reset the connection for an authenticated bind fallback
+                    if self.connection:
+                        self.connection.unbind()
+                    self.connection = Connection(self.server, user=self.bind_dn, password=self.bind_password, auto_bind=True)
+                    print('Authenticated mode (fallback)')
+
+            except LDAPBindError as auth_error:
+                print(f"Authenticated LDAP bind error: {auth_error}")
+                sys.exit(-1)
+
     def _disconnect(self):
         if self.connection:
             self.connection.unbind()
@@ -74,6 +114,7 @@ class ORADLDAP:
             naming_context = str(naming_context)
             naming_context = naming_context.split("namingContexts:")[1].strip()
             self.naming_context = naming_context
+            self.report.suffix = naming_context
         
         except LDAPSocketOpenError as e:
             print("Socket is not opened. Abording...")
@@ -99,13 +140,15 @@ class ORADLDAP:
 
         except Exception as e:
             raise ValueError(f"Error retrieving config context: {e}")
+        
         finally:
             self._disconnect()
+        
         return config_context
 
     def check_anonymous_auth(self):
         try:
-            self._connect(anonymous=True)
+            self._connect(anonymous=True,fallback=False)
             self.report.add_vulnerability('1','vuln_allow_anon_auth','Binding anonyme autorisé','Permet à une personne non autorisée d\'intérrégir avec le service et collecter des informations.','Désactiver la possibilité d’établir une connexion anonyme.')
             return True
         
@@ -120,21 +163,22 @@ class ORADLDAP:
        
     def check_anonymous_acl(self):
         try:
-            self._connect(anonymous=True)
+            self._connect(anonymous=True,fallback=False)
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-            acls = str(self.connection.entries[0]).split("olcAccess:")[1].split("\n")
-            userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
-            by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
-            for acl in acls:
-                acl = acl.strip()
-                match = re.search(userPassword_attribute, acl)
-                if match:
-                    matches = by_pattern.findall(acl)
-                    # Check if 'anonymous' has permissions other than 'none'
-                    anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
-                    if 'none' not in anonymous_permissions:
-                        self.report.add_vulnerability('1','vuln_anonymous_dangerous_perms','Permissions dangereuses pour un utilisateur non authentifié','Un utilisateur non authentifié a des permissions autres que \'none\' sur certains attributs','Il est recommandé de donner des permissions \'none\' à utilisateurs anonymes, ou configurer une règle par défault qui englobe certains ce type d\'utilisateurs')
-                    return anonymous_permissions        
+            if not len(self.connection.entries) == 0:
+                acls = str(self.connection.entries[0]).split("olcAccess:")[1].split("\n")
+                userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
+                by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
+                for acl in acls:
+                    acl = acl.strip()
+                    match = re.search(userPassword_attribute, acl)
+                    if match:
+                        matches = by_pattern.findall(acl)
+                        # Check if 'anonymous' has permissions other than 'none'
+                        anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
+                        if 'none' not in anonymous_permissions:
+                            self.report.add_vulnerability('1','vuln_anonymous_dangerous_perms','Permissions dangereuses pour un utilisateur non authentifié','Un utilisateur non authentifié a des permissions autres que \'none\' sur certains attributs','Il est recommandé de donner des permissions \'none\' à utilisateurs anonymes, ou configurer une règle par défault qui englobe certains ce type d\'utilisateurs')
+                        return anonymous_permissions        
         
         except LDAPSocketOpenError as e:
             print("Port {0} closed. Abording...".format(self.port))
@@ -150,44 +194,43 @@ class ORADLDAP:
         try:
             self._connect()
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-            acls_entry = str(self.connection.entries[0])
-                
-            result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
-            
-            if acls_entry:
-                parser = OpenLDAPACLParser(acls_entry)
-                acls = parser.get_acls()
-                dangerous_permissions = []
-                for acl_entry in acls:
-                    target_attribute = acl_entry.get('to', '')
-                    permissions = acl_entry.get('by', [])
-                    for permission in permissions:
-                        entity = permission.get('entity', '')
-                        permission_type = permission.get('permission', '')
-                        if permission_type == 'write' and entity != 'self':
-                            # Check for dangerous write permissions on attributes other than userPassword
-                            dangerous_permissions.append({
-                                'target_attribute': target_attribute,
-                                'entity': entity,
-                                'permission_type': permission_type
-                            })
-                        elif permission_type == 'auth' and entity == 'anonymous':
-                            # Check for dangerous auth permissions for anonymous users
-                            dangerous_permissions.append({
-                                'target_attribute': target_attribute,
-                                'entity': entity,
-                                'permission_type': permission_type
-                            })
-                # Print the results
-                if dangerous_permissions:
-                    self.report.add_vulnerability('1','vuln_dangerous_acls','Permissions dangereuses sur le serveur','Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.','Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d\'écriture au compte administrateur.')
-                    #print("Dangerous permissions found:")
-                    for entry in dangerous_permissions:
+            if not len(self.connection.entries) == 0:
+                acls_entry = str(self.connection.entries[0])
+                result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
+                if acls_entry:
+                    parser = OpenLDAPACLParser(acls_entry)
+                    acls = parser.get_acls()
+                    dangerous_permissions = []
+                    for acl_entry in acls:
+                        target_attribute = acl_entry.get('to', '')
+                        permissions = acl_entry.get('by', [])
+                        for permission in permissions:
+                            entity = permission.get('entity', '')
+                            permission_type = permission.get('permission', '')
+                            if permission_type == 'write' and entity != 'self':
+                                # Check for dangerous write permissions on attributes other than userPassword
+                                dangerous_permissions.append({
+                                    'target_attribute': target_attribute,
+                                    'entity': entity,
+                                    'permission_type': permission_type
+                                })
+                            elif permission_type == 'auth' and entity == 'anonymous':
+                                # Check for dangerous auth permissions for anonymous users
+                                dangerous_permissions.append({
+                                    'target_attribute': target_attribute,
+                                    'entity': entity,
+                                    'permission_type': permission_type
+                                })
+                    # Print the results
+                    if dangerous_permissions:
+                        self.report.add_vulnerability('1','vuln_dangerous_acls','Permissions dangereuses sur le serveur','Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.','Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d\'écriture au compte administrateur.')
+                        #print("Dangerous permissions found:")
+                        for entry in dangerous_permissions:
+                            var = 'ok'
+                            #print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
+                    else:
                         var = 'ok'
-                        #print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
-                else:
-                    var = 'ok'
-                    #print("No dangerous permissions found.")
+                        #print("No dangerous permissions found.")
 
         except LDAPSocketOpenError as e:
             print("Port {0} closed. Abording...".format(self.port))
@@ -202,21 +245,22 @@ class ORADLDAP:
         try:
             self._connect()
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-            acls_entry = str(self.connection.entries[0])
-            result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
-            if acls_entry:
-                parser = OpenLDAPACLParser(acls_entry)
-                acls = parser.get_acls()
-                if(
-                    acls[-1]['to'] == '*'
-                    and any(entry["entity"] == "*" and entry["permission"] == "none" for entry in acls[-1]['by'])
-                ):
-                    var = 'ok'
-                    #print('No permissions')
-                else:
-                    self.report.add_vulnerability('1','vuln_dangerous_default_acl','ACL par default dangereux','Si aucune règle d\'ACL n\'a été déclenchée, la dernière règle s\'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.',    
-                    """dn: olcDatabase={1}mdb,cn=config\n changetype: modify\n replace: olcAccess\nolcAccess: {4}to * by * none""")
-                    #print('Default ACL rule is dangerous')
+            if not len(self.connection.entries) == 0:
+                acls_entry = str(self.connection.entries[0])
+                result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
+                if acls_entry:
+                    parser = OpenLDAPACLParser(acls_entry)
+                    acls = parser.get_acls()
+                    if(
+                        acls[-1]['to'] == '*'
+                        and any(entry["entity"] == "*" and entry["permission"] == "none" for entry in acls[-1]['by'])
+                    ):
+                        var = 'ok'
+                        #print('No permissions')
+                    else:
+                        self.report.add_vulnerability('1','vuln_dangerous_default_acl','ACL par default dangereux','Si aucune règle d\'ACL n\'a été déclenchée, la dernière règle s\'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.',    
+                        """dn: olcDatabase={1}mdb,cn=config\n changetype: modify\n replace: olcAccess\nolcAccess: {4}to * by * none""")
+                        #print('Default ACL rule is dangerous')
         
         except LDAPSocketOpenError as e:
             print("Port {0} closed. Abording...".format(self.port))
@@ -228,7 +272,7 @@ class ORADLDAP:
             self._disconnect()
 
     def check_password_write_permission(self):
-        users_to_check = self.domain_admins
+        users_to_check = self.critical_ous
         users_to_check.append("self")
         users_with_write_permissions = []
         try:
@@ -271,21 +315,17 @@ class ORADLDAP:
                 search_scope=SUBTREE,
                 attributes=[ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES]
             )
-
             if not self.connection.entries:
-                self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer le module ppolicy')
+                self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer et configurer le module ppolicy')
         except LDAPSocketOpenError as e:
             print("Port {0} closed. Abording...".format(self.port))
             sys.exit(-1)
 
         except LDAPObjectClassError as e:
-            # Handle the specific LDAPObjectClassError for invalid object class
-            self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer le module ppolicy')
+            self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer et configurer le module ppolicy')
         
         except Exception as e:
-            print(f"Error checking ppolicy: {e}")
-            return False
-
+            self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer et configurer le module ppolicy')
         finally:
             self._disconnect()
 
@@ -296,6 +336,7 @@ class ORADLDAP:
             # Create a server object
             self.server = Server(f"{self.server_uri}:{self.port}", get_info=ALL, use_ssl=self.use_ldaps, tls=tls_configuration)
 
+            
             # Create a connection object
             self.connection = Connection(self.server, user="cn=admin,dc=example,dc=com", password='secret', auto_bind=True)
             search_filter = '(objectClass=inetOrgPerson)'
@@ -321,50 +362,17 @@ class ORADLDAP:
         finally:
             self._disconnect()
 
-    def check_ldap_ssf(self, username=None, password=None, min_ssf_threshold=128):
-        try:
-            # Establish an LDAPS connection
-            server = Server(self.server_uri, use_ssl=True, get_info=ALL)
-            connection = Connection(server, user=username, password=password, auto_bind=True)
-
-            # Check if TLS/SSL is in effect
-            if connection.tls_in_effect is not None:
-                # Retrieve the SSF value
-                ssf_value = connection.tls_in_effect.get("ssf")
-
-                # Verify the SSF value against the threshold
-                if ssf_value is not None and ssf_value >= min_ssf_threshold:
-                    print(f"SSL/TLS connection is secure. SSF value: {ssf_value}")
-                    connection.unbind()
-                    return True
-                else:
-                    print(f"SSL/TLS connection is not secure. SSF value is below the threshold.")
-                    connection.unbind()
-                    return False
-            else:
-                print("TLS/SSL is not in effect. Connection may not be secure.")
-                connection.unbind()
-                return False
-
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
-
-        except Exception as e:
-            print(f"Error during SSF verification: {str(e)}")
-            return False
-
     def _read_config(self):
         try:
             with open(self.config_path) as f:
                 data = yaml.safe_load(f)
                 self.server_uri = data['ldap']['server_uri']
                 self.port = data['ldap']['port']
-                self.bind_dn = data['ldap']['bind_dn']   
-                self.bind_password = data['ldap']['bind_password'] 
-                self.use_ldaps = data['ldap']['use_ldaps'] 
-                for domain_admin in data['ldap']['admins_dn']:
-                    self.domain_admins.append(domain_admin)
+                self.admin_user = data['ldap']['admin_user']   
+                self.admin_password = data['ldap']['admin_password'] 
+                self.use_ssl = data['ldap']['use_ssl'] 
+                for critical_ou in data['ldap']['critical_ous']:
+                    self.critical_ous.append(critical_ou)
                 print('Reading conf..')
 
         except (configparser.Error, ValueError) as e:
@@ -379,9 +387,9 @@ class ORADLDAP:
         self.check_anonymous_auth()
         self.check_all_acls()
         self.check_default_acl_rule()
+        self.check_anonymous_acl()
         self.check_password_write_permission()
         self.check_ppolicy()
-        self.check_ldap_ssf()
         self.check_user_password_encryption()
         
         # Report Generation
