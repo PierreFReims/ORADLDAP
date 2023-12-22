@@ -104,7 +104,7 @@ class ORADLDAP:
 
     def check_anonymous_auth(self):
         try:
-            self._connect(anonymous=True,fallback=False)
+            self._connect_anonymously()
             self.report.add_vulnerability('vuln_allow_anon_auth')
             return True
         
@@ -119,7 +119,7 @@ class ORADLDAP:
        
     def check_anonymous_acl(self):
         try:
-            self._connect(anonymous=True,fallback=False)
+            self._connect_anonymously()
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
             if not len(self.connection.entries) == 0:
                 acls = str(self.connection.entries[0]).split("olcAccess:")[1].split("\n")

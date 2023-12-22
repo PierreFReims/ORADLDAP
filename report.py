@@ -9,18 +9,26 @@ class Vulnerability:
         self.title = title
         self.description = description
         self.recommendation = recommendation
+    
+    def display(self):
+        print('ID: ',self.id)
+        print('LEVEL: ',self.level)
+        print('TITLE: ',self.title)
+        print('DESCRIPTION: ',self.description)
+        print('RECOMMANDATION:',self.recommendation)
 
 class VulnerabilityReport:
     def __init__(self, suffix=None):
         
         self.suffix = suffix
-        self.all_vulnerabilities = self.load_vulnerabilities("assets/vulnerabilities.json")
+        self.all_vulnerabilities = self.load_vulnerabilities_from_assets("assets/vulnerabilities.json")
         self.vulnerabilities = []
 
     def add_vulnerability(self, vulnerability_id):
         vulnerability = self.get_vulnerability_by_id(vulnerability_id)
-        v = Vulnerability(vulnerability['level'], vulnerability['id'],vulnerability['title'], vulnerability['description'], vulnerability['recommandation'])
-        self.vulnerabilities.append(vulnerability)
+        v = Vulnerability(vulnerability['level'], vulnerability['id'],vulnerability['title'], vulnerability['description'], vulnerability['recommendation'])
+        
+        self.vulnerabilities.append(v)
 
     def generate_report(self, output_file='render/report.html'):
         with open(output_file, 'w') as file:
@@ -54,8 +62,8 @@ class VulnerabilityReport:
     </tr>
   </thead>
   <tbody>""")
+
         for vuln in self.vulnerabilities:
-            # Use unique IDs for rows and data
             row_id = f'vulnRow{vuln.id}'
             description_row_id = f'descriptionRow{vuln.id}'
             recommendation_row_id = f'recommendationRow{vuln.id}'
@@ -63,10 +71,15 @@ class VulnerabilityReport:
             file.write(f'<tr class="table-danger" onclick="toggleDetails(\'{row_id}\', \'{description_row_id}\', \'{recommendation_row_id}\')">'
                     f'<th scope="row"><span class="level_{vuln.level} align-middle">{vuln.level}</span></th><td class="text-danger align-middle">{vuln.title}</td><td class="text-danger align-middle">{vuln.id}</td>'
                     f'</tr>')
-
-            # Add JavaScript to toggle visibility of the hidden rows
+            # Write Vulnerability description
             file.write(f'<tr id="{description_row_id}" class="table-light" style="display: none;"><td colspan=5><div><h4>Description de la Vulnérabilité</h4><p>{vuln.description}</p></div></td></tr>')
-            file.write(f'<tr id="{recommendation_row_id}" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recommandation</h4><p>{vuln.recommendation}</p></div></td></tr>')
+            
+            # Write Vulnerability recommendation(s)
+            file.write(f'<tr id="{recommendation_row_id}" class="table-primary" style="display: none;"><td colspan=5><div><h4>Recommandation</h4>')
+            for recommendation in vuln.recommendation:
+                file.write(f'<span><p>{recommendation}</p></span>')
+            file.write('</div></td></tr>')
+        
         file.write('<script>'
                'function toggleDetails(rowId, descriptionRowId, recommendationRowId) {'
                'var descriptionRow = document.getElementById(descriptionRowId);'
@@ -75,7 +88,6 @@ class VulnerabilityReport:
                'recommendationRow.style.display = (recommendationRow.style.display === "none") ? "table-row" : "none";'
                '}'
                '</script>')
-
         file.write('</tbody></table>')
 
     def write_html_footer(self, file):
@@ -87,7 +99,7 @@ class VulnerabilityReport:
                 return vulnerability
         return None
     
-    def load_vulnerabilities(self, file_path):
+    def load_vulnerabilities_from_assets(self, file_path):
         try:
             with open(file_path, 'r', encoding='utf-8') as json_file:
                 data = json.load(json_file)
