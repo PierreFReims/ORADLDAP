@@ -1,3 +1,7 @@
+import sys
+import json
+
+
 class Vulnerability:
     def __init__(self,level, id, title, description, recommendation):
         self.level= level
@@ -8,11 +12,14 @@ class Vulnerability:
 
 class VulnerabilityReport:
     def __init__(self, suffix=None):
+        
         self.suffix = suffix
+        self.all_vulnerabilities = self.load_vulnerabilities("assets/vulnerabilities.json")
         self.vulnerabilities = []
 
-    def add_vulnerability(self, level=None, id=None, title=None, description=None, recommendation=None):
-        vulnerability = Vulnerability(level, id, title, description, recommendation)
+    def add_vulnerability(self, vulnerability_id):
+        vulnerability = self.get_vulnerability_by_id(vulnerability_id)
+        v = Vulnerability(vulnerability['level'], vulnerability['id'],vulnerability['title'], vulnerability['description'], vulnerability['recommandation'])
         self.vulnerabilities.append(vulnerability)
 
     def generate_report(self, output_file='render/report.html'):
@@ -73,3 +80,21 @@ class VulnerabilityReport:
 
     def write_html_footer(self, file):
         file.write('</body>\n</html>\n')
+
+    def get_vulnerability_by_id(self, vulnerability_id):
+        for vulnerability in self.all_vulnerabilities:
+            if vulnerability.get('id') == vulnerability_id:
+                return vulnerability
+        return None
+    
+    def load_vulnerabilities(self, file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as json_file:
+                data = json.load(json_file)
+                return data.get("vulnerabilities", [])
+        except FileNotFoundError:
+            print(f"Error: File not found - {file_path}")
+            return []
+        except json.JSONDecodeError:
+            print(f"Error: Failed to decode JSON from file - {file_path}")
+            return []

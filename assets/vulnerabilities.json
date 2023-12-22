@@ -1,0 +1,54 @@
+{
+    "vulnerabilities": [
+      {
+        "id": "vuln_allow_anon_auth",
+        "level": 1,
+        "title": "Binding anonyme autorisé",
+        "description": "Permet à une personne non autorisée d'intérrégir avec le service et collecter des informations.",
+        "recommendation": ["Désactiver la possibilité d’établir une connexion anonyme."]
+      },
+      {
+        "id": "vuln_anonymous_dangerous_perms",
+        "level": 1,
+        "title": "Permissions dangereuses pour un utilisateur non authentifié",
+        "description": "Un utilisateur non authentifié a des permissions autres que 'none' sur certains attributs",
+        "recommendation": ["Il est recommandé de donner des permissions 'none' à utilisateurs anonymes.", "Configurer une règle par défault qui englobe certains ce type d'utilisateurs."]
+      },
+      {
+        "id": "vuln_dangerous_acls",
+        "level": 1,
+        "title": "Permissions dangereuses sur le serveur",
+        "description": "Des Contrôles d’accès sont inexistants sur le serveur LDAP, ou ne protègent pas suffisamment les attributs critiques des entrées utilisateurs comme userPassword, uid.",
+        "recommendation": ["Accorder des privilèges de lecture exclusivement aux propriétaires.", "Octroyer les droits en écriture au compte administrateur."]
+      },
+      {
+        "id": "vuln_dangerous_default_acl",
+        "level": 1,
+        "title": "ACL par default dangereux",
+        "description": "Si aucune règle d'ACL n'a été déclenchée, la dernière règle s'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.",
+        "recommendation": ["Modifier les ACL par défaut:\ndn: olcDatabase={1}mdb,cn=config\nchangetype: modify\nreplace: olcAccess\nolcAccess: {4}to * by * none"]
+      },
+      {
+        "id": "vuln_userpassword_write_perm",
+        "level": 1,
+        "title": "Permissions en écriture sur un attribut userPassword",
+        "description": "Les autorisations d'ecriture sur l'attribut userPassword representent un risque significatif pour la securite du systeme. Cela signifie que des entites non autorisees pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialite des informations sensibles.",
+        "recommendation": ["Examiner et mettre à jour les contrôles d'accès (ACL) pour l'attribut userPassword."]
+      },
+      {
+        "id": "vuln_missing_ppolicy",
+        "level": 1,
+        "title": "Absence de politique de mots de passe",
+        "description": "En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.",
+        "recommendation": ["Activer et configurer le module ppolicy."]
+      },
+      {
+        "id": "vuln_no_password_encryption",
+        "level": 1,
+        "title": "Mot de passe stocké en clair",
+        "description": "Au moins un mot de passe utilisateur est stocké sans chiffrement ni hachage, ce qui expose les données sensibles à un risque élevé en cas de violation de la sécurité.",
+        "recommendation": ["Utilisation d'un algorithme de hachage pour stocker les mots de passe."]
+      }
+    ]
+  }
+  

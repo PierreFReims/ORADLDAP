@@ -5,7 +5,7 @@ import ssl
 import sys
 from parser import OpenLDAPACLParser
 from report import VulnerabilityReport
-from ldap3 import Server, Connection, SAFE_SYNC, SUBTREE, BASE, ANONYMOUS, ALL, Tls, ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES
+from ldap3 import *
 from ldap3.core.exceptions import *
 import re
 import logging
@@ -105,7 +105,7 @@ class ORADLDAP:
     def check_anonymous_auth(self):
         try:
             self._connect(anonymous=True,fallback=False)
-            self.report.add_vulnerability('1','vuln_allow_anon_auth','Binding anonyme autorisé','Permet à une personne non autorisée d\'intérrégir avec le service et collecter des informations.','Désactiver la possibilité d’établir une connexion anonyme.')
+            self.report.add_vulnerability('vuln_allow_anon_auth')
             return True
         
         except LDAPSocketOpenError as e:
@@ -133,7 +133,7 @@ class ORADLDAP:
                         # Check if 'anonymous' has permissions other than 'none'
                         anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
                         if 'none' not in anonymous_permissions:
-                            self.report.add_vulnerability('1','vuln_anonymous_dangerous_perms','Permissions dangereuses pour un utilisateur non authentifié','Un utilisateur non authentifié a des permissions autres que \'none\' sur certains attributs','Il est recommandé de donner des permissions \'none\' à utilisateurs anonymes, ou configurer une règle par défault qui englobe certains ce type d\'utilisateurs')
+                            self.report.add_vulnerability('vuln_anonymous_dangerous_perms')
                         return anonymous_permissions        
         
         except LDAPSocketOpenError as e:
@@ -179,7 +179,7 @@ class ORADLDAP:
                                 })
                     # Print the results
                     if dangerous_permissions:
-                        self.report.add_vulnerability('1','vuln_dangerous_acls','Permissions dangereuses sur le serveur','Des Contrôles d’accès sont inéxistants sur le serveur LDAP, ou ne protègent pas suffisament les attributs critiques des entrées utilisateurs comme userPassword, uid.','Accorder des privilèges de lecture exclusivement aux propriétaires et octroyer les droits d\'écriture au compte administrateur.')
+                        self.report.add_vulnerability('vuln_dangerous_acls')
                         #print("Dangerous permissions found:")
                         for entry in dangerous_permissions:
                             var = 'ok'
@@ -214,8 +214,7 @@ class ORADLDAP:
                         var = 'ok'
                         #print('No permissions')
                     else:
-                        self.report.add_vulnerability('1','vuln_dangerous_default_acl','ACL par default dangereux','Si aucune règle d\'ACL n\'a été déclenchée, la dernière règle s\'applique de manière globale, couvrant toutes les éventualités et autorisant potentiellement des actions risquées.',    
-                        """dn: olcDatabase={1}mdb,cn=config\n changetype: modify\n replace: olcAccess\nolcAccess: {4}to * by * none""")
+                        self.report.add_vulnerability('vuln_dangerous_default_acl')
                         #print('Default ACL rule is dangerous')
         
         except LDAPSocketOpenError as e:
@@ -247,7 +246,7 @@ class ORADLDAP:
                         # Check the 'to' attribute after write permission
                         to_attribute = acl.get('to', '')
                         if 'userPassword' in to_attribute or '*' in to_attribute:
-                            self.report.add_vulnerability('1','vuln_userpassword_write_perm','Permissions en écriture sur un attribut userPassword','Les autorisations d\'ecriture sur l\'attribut userPassword representent un risque significatif pour la securite du systeme. Cela signifie que des entites non autorisees pourraient potentiellement modifier les mots de passe des utilisateurs, compromettant ainsi la confidentialite des informations sensibles.','Examiner et mettre a jour les controles d\'acces (ACL) pour l\'attribut userPassword')
+                            self.report.add_vulnerability('vuln_userpassword_write_perm')
                             # Additional checks or actions based on the 'to' attribute if needed
 
         except LDAPSocketOpenError as e:
@@ -272,16 +271,16 @@ class ORADLDAP:
                 attributes=[ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES]
             )
             if not self.connection.entries:
-                self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer et configurer le module ppolicy')
+                self.report.add_vulnerability('vuln_missing_ppolicy')
         except LDAPSocketOpenError as e:
             print("Port {0} closed. Abording...".format(self.port))
             sys.exit(-1)
 
         except LDAPObjectClassError as e:
-            self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer et configurer le module ppolicy')
+            self.report.add_vulnerability('vuln_missing_ppolicy')
         
         except Exception as e:
-            self.report.add_vulnerability('1','vuln_missing_ppolicy','Absence de politique de mots de passe','En l’absence d’une politique de mot de passe, les utilisateurs peuvent être libres de choisir des mots de passe faibles, faciles à deviner, ou de ne pas suivre de bonnes pratiques de sécurité. Une politique de mot de passe efficace est cruciale pour renforcer la sécurité des systèmes, car les mots de passe sont souvent la première ligne de défense contre l’accès non autorisé.','Activer et configurer le module ppolicy')
+            self.report.add_vulnerability('vuln_missing_ppolicy')
         finally:
             self._disconnect()
 
@@ -290,7 +289,7 @@ class ORADLDAP:
             # Configure TLS if LDAPS is used
             tls_configuration = None
             # Create a server object
-            self.server = Server(f"{self.server_uri}:{self.port}", get_info=ALL, use_ssl=self.use_ldaps, tls=tls_configuration)
+            self.server = Server(f"{self.server_uri}:{self.port}", get_info=ALL, use_ssl=self.use_starttls, tls=tls_configuration)
 
             
             # Create a connection object
@@ -306,7 +305,7 @@ class ORADLDAP:
                 for attribute in self.connection.entries:
                     user_password = attribute.userPassword.value.decode('utf-8')
                     if not re.match(r'{[^}]+}', user_password):
-                        self.report.add_vulnerability('1','vuln_no_password_encryption','Mot de passe stocké en clair','Au moins un mots de passe utilisateurs est stocké sans chiffrement ni hachage, ce qui expose les données sensibles à un risque élevé en cas de violation de la sécurité.','Utilisation d\'un algorithme de hashage pour stocker les mots de passe')
+                        self.report.add_vulnerability('vuln_no_password_encryption')
                         break
         
         except LDAPSocketOpenError as e:
@@ -342,9 +341,9 @@ class ORADLDAP:
         self.get_config_context()
         self.check_anonymous_auth()
         self.check_all_acls()
-        #self.check_default_acl_rule()
-        #self.check_anonymous_acl()
-        #self.check_password_write_permission()
+        self.check_default_acl_rule()
+        self.check_anonymous_acl()
+        self.check_password_write_permission()
         #self.check_ppolicy()
         #self.check_user_password_encryption()
         
