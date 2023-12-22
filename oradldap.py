@@ -20,85 +20,41 @@ class ORADLDAP:
         self.server_uri = None
         self.bind_dn = None
         self.bind_password = None
-        self.use_ldaps = False
         self.server = None
         self.connection = None
         self.logging = None
         self.critical_ous = []
         self._read_config()
+
+        self.server = Server(self.server_uri,port=self.port, use_ssl=self.use_starttls)
         if self.admin_password == None:
-            self.admin_password = input()
+            self.admin_password = input("Mot de passe administrateur: ")
+
         self.report = VulnerabilityReport()
 
-    def _connect(self,anonymous=False,fallback=True):
-        if anonymous:
-            self._connect_anonymous_first(fallback=fallback)
-        else:
-            self._connect_authenticated_first(fallback=fallback)
-            
-    def _connect_authenticated_first(self,fallback=True):
-        # Configure TLS if LDAPS is used
-        tls_configuration = None
-        if self.use_ldaps:
-            tls_configuration = Tls(validate=ssl.CERT_REQUIRED)
-
-        # Create a server object
-        self.server = Server(self.server_uri, port=self.port, get_info=ALL, use_ssl=self.use_ssl, tls=tls_configuration)
-
+    def _connect(self, anonymous=False):
         try:
-            # Attempt an authenticated bind
+            # Create a server object
+            self.server = Server(self.server_uri, port=self.port, get_info=ALL)
+
+            # Connect
             self.connection = Connection(self.server, user=self.bind_dn, password=self.bind_password, auto_bind=True)
-            if self.use_ssl:
+
+            if self.use_starttls:
+                # Start TLS if configured
                 self.connection.start_tls()
-            print('Authenticated mode')
 
-        except LDAPBindError as auth_error:
-            print(f"Authenticated LDAP bind error: {auth_error}")
+            print('Connected successfully')
 
-            try:
-                # Reset the connection for an anonymous bind fallback
-                self.connection.unbind()
-                self.connection = Connection(self.server, auto_bind=True)
-                print('Anonymous mode (fallback)')
-
-            except LDAPBindError as anonymous_error:
-                print(f"Anonymous LDAP bind error: {anonymous_error}")
-                sys.exit(-1)
-        except LDAPSocketOpenError as e:
-            print('Ouverture de la socket impossible...')
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
             sys.exit(-1)
+            
+    def _connect_anonymously(self):
+        self._connect(anonymous=True)
 
-    def _connect_anonymous_first(self,fallback=True):
-        # Configure TLS if LDAPS is used
-        tls_configuration = None
-        if self.use_ldaps:
-            tls_configuration = Tls(validate=ssl.CERT_REQUIRED)
-        # Create a server object
-        self.server = Server(self.server_uri, port=self.port, get_info=ALL, use_ssl=self.use_ssl, tls=tls_configuration)
-        try:
-            if fallback:
-            # Attempt an anonymous bind
-                self.connection = Connection(self.server, auto_bind=True)
-                if self.use_ssl:
-                    self.connection.start_tls()
-                print('Anonymous mode')
-        except LDAPSocketOpenError as e:
-            print('Ouverture de la socket impossible...')
-            sys.exit(-1)
-
-        except LDAPBindError as anonymous_error:
-            print(f"Anonymous LDAP bind error: anonymous bind not allowed")
-            try:
-                if fallback:
-                    # Reset the connection for an authenticated bind fallback
-                    if self.connection:
-                        self.connection.unbind()
-                    self.connection = Connection(self.server, user=self.bind_dn, password=self.bind_password, auto_bind=True)
-                    print('Authenticated mode (fallback)')
-
-            except LDAPBindError as auth_error:
-                print(f"Authenticated LDAP bind error: {auth_error}")
-                sys.exit(-1)
+    def _connect_authenticated(self):
+        self._connect(anonymous=False)
 
     def _disconnect(self):
         if self.connection:
@@ -370,7 +326,7 @@ class ORADLDAP:
                 self.port = data['ldap']['port']
                 self.admin_user = data['ldap']['admin_user']   
                 self.admin_password = data['ldap']['admin_password'] 
-                self.use_ssl = data['ldap']['use_ssl'] 
+                self.use_starttls = data['ldap']['use_starttls'] 
                 for critical_ou in data['ldap']['critical_ous']:
                     self.critical_ous.append(critical_ou)
                 print('Reading conf..')
@@ -386,11 +342,11 @@ class ORADLDAP:
         self.get_config_context()
         self.check_anonymous_auth()
         self.check_all_acls()
-        self.check_default_acl_rule()
-        self.check_anonymous_acl()
-        self.check_password_write_permission()
-        self.check_ppolicy()
-        self.check_user_password_encryption()
+        #self.check_default_acl_rule()
+        #self.check_anonymous_acl()
+        #self.check_password_write_permission()
+        #self.check_ppolicy()
+        #self.check_user_password_encryption()
         
         # Report Generation
         self.report.generate_report()

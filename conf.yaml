@@ -3,8 +3,8 @@ ldap:
   port: 389
   simple_user: cn=admin,dc=example,dc=com
   admin_user: cn=admin,cn=config
-  admin_password: secret
-  use_ssl: True
+  admin_password: 
+  use_starttls: True
   critical_ous:
     - ou=Admins,ou=IT,dc=example,dc=com
     - ou=Heldesk,ou=IT,dc=example,dc=com
