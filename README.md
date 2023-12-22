@@ -21,3 +21,5 @@ pip3 install -r requirements.txt
 ```bash
 ./main.py conf.yaml
 ```
+
+>Administrator privileges on cn=config are required 
