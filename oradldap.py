@@ -23,9 +23,12 @@ class ORADLDAP:
         self.simple_user = None
         self.simple_password = None
         self.critical_ous = []
+        
         self.anonymous_connection = None
         self.simple_connection = None 
         self.admin_connection = None
+        
+        self.strategy = None
         
         # Reading config file
         self._read_config()
@@ -35,13 +38,14 @@ class ORADLDAP:
         
         # Connections
         self._connect()
-
-        self.report = VulnerabilityReport()
+        
+        self.report = VulnerabilityReport(suffix=self.naming_context,strategy=self.strategy)
     
     def _connect(self):
         # Anonymous
         try:
             self.anonymous_connection = Connection(self.server,auto_bind=True)
+            self.strategy = "ANONYMOUS"
             if self.use_starttls:
                 self.anonymous_connection.start_tls()
             print("Anonymous connection") 
@@ -52,6 +56,7 @@ class ORADLDAP:
         # Simple user
         try:
             self.simple_connection = Connection(self.server,user=self.simple_user,password=self.simple_password, auto_bind=True)
+            self.strategy = "AUTHENTICATED"
             if self.use_starttls:
                 self.simple_connection.start_tls()
             print("Simple connection") 
@@ -61,6 +66,7 @@ class ORADLDAP:
         # Admin user
         try:
             self.simple_connection = Connection(self.server,user=self.admin_user,password=self.admin_password, auto_bind=True)
+            self.strategy = "ADMIN"
             if self.use_starttls:
                 self.admin_connection.start_tls()
             print("Admin connection") 

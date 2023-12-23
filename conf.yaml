@@ -1,10 +1,11 @@
 ldap:
   server_uri: 'ldap://127.0.0.1'
   port: 389
-  simple_user: cn=admin,dc=example,dc=com
+  simple_user: cn=admin,dc=my-company,dc=com
+  simple_password: JonSn0w
   admin_user: cn=admin,cn=config
-  admin_password: 
-  use_starttls: True
+  admin_password: JonSn0w
+  use_starttls: False
   critical_ous:
     - ou=Admins,ou=IT,dc=example,dc=com
     - ou=Heldesk,ou=IT,dc=example,dc=com

@@ -18,8 +18,8 @@ class Vulnerability:
         print('RECOMMANDATION:',self.recommendation)
 
 class VulnerabilityReport:
-    def __init__(self, suffix=None):
-        
+    def __init__(self, suffix=None, strategy=None):
+        self.strategy = strategy
         self.suffix = suffix
         self.all_vulnerabilities = self.load_vulnerabilities_from_assets("assets/vulnerabilities.json")
         self.vulnerabilities = []
@@ -49,6 +49,8 @@ class VulnerabilityReport:
   </a>
 </nav>""")
         file.write('<h1 class="text-center">Rapport de sécurité</h1>\n')
+        if self.strategy:
+            file.write('<p>Execution Strategy: <span id="username">{0}</span></p>'.format(self.strategy))
         if self.suffix is not None:
             file.write('<p class="text-center">{0}</p>\n'.format(self.suffix))
 
