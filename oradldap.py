@@ -38,9 +38,8 @@ class ORADLDAP:
         
         # Connections
         self._connect()
-        
-        self.report = VulnerabilityReport(suffix=self.naming_context,strategy=self.strategy)
-    
+        self.report = VulnerabilityReport(strategy=self.strategy)
+
     def _connect(self):
         # Anonymous
         try:
@@ -104,6 +103,7 @@ class ORADLDAP:
             try:
                 connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
                 self.naming_context = str(connection.entries[0]).split("namingContexts:")[1].strip()
+                self.report.suffix = self.naming_context
                 if strategy == "ANONYMOUS" and self.naming_context:
                     self.report.add_vulnerability('warning_naming_context')
             except LDAPSocketOpenError as e:

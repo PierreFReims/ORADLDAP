@@ -49,11 +49,11 @@ class VulnerabilityReport:
   </a>
 </nav>""")
         file.write('<h1 class="text-center">Rapport de sécurité</h1>\n')
-        if self.strategy:
-            file.write('<p>Execution Strategy: <span id="username">{0}</span></p>'.format(self.strategy))
+        file.write('<div class="container-fluid">')
         if self.suffix is not None:
-            file.write('<p class="text-center">{0}</p>\n'.format(self.suffix))
-
+            file.write('<p>Naming Context: <span>{0}</span></p>\n'.format(self.suffix))
+        if self.strategy:
+            file.write('<p>Execution Strategy: <span>{0}</span></p>'.format(self.strategy))
     def write_vulnerabilities(self, file):
         file.write("""<table class="table table-bordered table-light">
   <thead>
@@ -82,6 +82,8 @@ class VulnerabilityReport:
                 file.write(f'<span><p>{recommendation}</p></span>')
             file.write('</div></td></tr>')
         
+        file.write('</tbody></table>')
+        file.write('</div>')
         file.write('<script>'
                'function toggleDetails(rowId, descriptionRowId, recommendationRowId) {'
                'var descriptionRow = document.getElementById(descriptionRowId);'
@@ -90,7 +92,6 @@ class VulnerabilityReport:
                'recommendationRow.style.display = (recommendationRow.style.display === "none") ? "table-row" : "none";'
                '}'
                '</script>')
-        file.write('</tbody></table>')
 
     def write_html_footer(self, file):
         file.write('</body>\n</html>\n')
