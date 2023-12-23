@@ -67,91 +67,70 @@ class ORADLDAP:
         except Exception as e:
             print(f"An unexpected error occurred during admin user connection: {e}")
 
-    def disconnect(self):
+    def _disconnect(self):
         if self.anonymous_connection:
             self.anonymous_connection.unbind()
         if self.simple_connection:
             self.simple_connection.unbind()
         if self.admin_connection:
             self.admin_connection.unbind()
+    
+    def _get_connection_by_strategy(self, strategy):
+        if strategy == "ANONYMOUS":
+            return self.anonymous_connection
+        elif strategy == "SIMPLE":
+            return self.simple_connection
+        elif strategy == "ADMIN":
+            return self.admin_connection
+        else:
+            raise ValueError(f"Invalid strategy: {strategy}")
+            
+    def get_config_context(self):
+        if self.server:
+            self.config_context = str(self.server.info).split("configContext:")[1].lstrip().split("\n")[0]
+        return self.config_context
 
     def get_naming_context(self, strategy="ANONYMOUS"):
+        
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            print(f"{strategy} - Getting naming context")
+            try:
+                connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
+                self.naming_context = str(connection.entries[0]).split("namingContexts:")[1].strip()
+                if strategy == "ANONYMOUS" and self.naming_context:
+                    self.report.add_vulnerability('warning_naming_context')
+            except LDAPSocketOpenError as e:
+                print("Socket is not opened. Aborting...")
+            except Exception as e:
+                raise ValueError(f"Error retrieving naming context: {e}")
+            return self.naming_context
+
+    def get_subentries(self,strategy="ANONYMOUS"):
+        print(f"{strategy} - Getting naming context")
         if strategy == "ANONYMOUS":
-            print("ANONYMOUS - Getting naming context")
-            if self._get_naming_context_anonymous():
-                self.report.add_vulnerability('warning_naming_context')
+            var = ''
         elif strategy == "SIMPLE":
-            print("SIMPLE - Getting naming context")
-            return self._get_naming_context_simple()
+            var = ''
         elif strategy == "ADMIN":
-            print("ADMIN - Getting naming context")
-            return self._get_naming_context_admin()
+            var = ''
         else:
             raise ValueError(f"Invalid strategy: {strategy}")
 
-    def _get_naming_context_anonymous(self):
+    def _get_subentries_anonymous(self):
         if self.anonymous_connection:
             try:
-                self.anonymous_connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
-                self.naming_context = str(self.anonymous_connection.entries[0]).split("namingContexts:")[1].strip()
-            
-            except LDAPSocketOpenError as e:
-                print("Socket is not opened. Abording...")
-
+                # Search for subentries in the Root DSE
+                result = connection.search(base=self.naming_context, scope=ldap.SCOPE_SUBTREE, filterstr="(objectClass=*)", attrlist=["subschemaSubentry"])
+                
+                # Extract subentries from the result
+                subentries = [entry[1]["subschemaSubentry"][0].decode('utf-8') for entry in result if "subschemaSubentry" in entry[1]]
+                return subentries
             except Exception as e:
                 raise ValueError(f"Error retrieving naming context: {e}")
-            
-            return self.naming_context
         else:
             return
-
-    def _get_naming_context_simple(self):
-        if self.simple_connection:
-            try:
-                self.simple_connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
-                self.naming_context = str(self.simple_connection.entries[0]).split("namingContexts:")[1].strip()
-            
-            except LDAPSocketOpenError as e:
-                print("Socket is not opened. Abording...")
-
-            except Exception as e:
-                raise ValueError(f"Error retrieving naming context: {e}")
-            
-            return self.naming_context
-        else:
-            return
-
-    def _get_naming_context_admin(self):
-        if self.admin_connection:
-            try:
-                self.admin_connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
-                self.naming_context = str(self.admin_connection.entries[0]).split("namingContexts:")[1].strip()
-            
-            except LDAPSocketOpenError as e:
-                print("Socket is not opened. Abording...")
-
-            except Exception as e:
-                raise ValueError(f"Error retrieving naming context: {e}")
-            
-            return self.naming_context
-        else:
-            return
-
-    def get_config_context(self):
-        try:
-            self._connect()
-            self.connection.search(search_base='', search_filter='(objectclass=*)', attributes=['*'],search_scope='BASE')
-            self.config_context = str(self.server.info).split("configContext:")[1].lstrip().split("\n")[0]
-        
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
-
-        except Exception as e:
-            raise ValueError(f"Error retrieving config context: {e}")
-        
-        return self.config_context
-
+    
     def check_anonymous_auth(self):
         print("ANONYMOUS - Check anonymous auths")
         if self.anonymous_connection:
@@ -187,7 +166,7 @@ class ORADLDAP:
             # Handle the exception as needed
             print(f"Error checking anonymous ACL: {e}")
         finally:
-            self.disconnect()
+            self._disconnect()
 
     def check_all_acls(self):
         try:
@@ -238,7 +217,7 @@ class ORADLDAP:
         except Exception as e:
             print(f"Error checking ACLs: {e}")
         finally:
-            self.disconnect()
+            self._disconnect()
 
     def check_default_acl_rule(self):
         try:
@@ -267,7 +246,7 @@ class ORADLDAP:
         except Exception as e:
             print(f"Error checking ACLs: {e}")
         finally:
-            self.disconnect()
+            self._disconnect()
 
     def check_password_write_permission(self):
         users_to_check = self.critical_ous
@@ -300,7 +279,7 @@ class ORADLDAP:
             # Handle the exception as needed
             print(f"Error checking anonymous ACL: {e}")
         finally:
-            self.disconnect()
+            self._disconnect()
 
     def check_ppolicy(self):
         try:
@@ -325,7 +304,7 @@ class ORADLDAP:
         except Exception as e:
             self.report.add_vulnerability('vuln_missing_ppolicy')
         finally:
-            self.disconnect()
+            self._disconnect()
 
     def check_user_password_encryption(self):
         try:
@@ -355,7 +334,7 @@ class ORADLDAP:
         except Exception as e:
             print(f"Error checking ACLs: {e}")
         finally:
-            self.disconnect()
+            self._disconnect()
 
     def _read_config(self):
         try:
@@ -390,7 +369,6 @@ class ORADLDAP:
         # ANONYMOUS
         self.get_naming_context(strategy="ANONYMOUS")
         self.check_anonymous_auth()
-        
         #self.check_all_acls()
         #self.check_default_acl_rule()
         #self.check_anonymous_acl()
@@ -404,6 +382,9 @@ class ORADLDAP:
         # ADMIN USER
         self.get_naming_context(strategy="ADMIN")
         
+        # Close connections
+        self._disconnect()
+
         # Report Generation
         self.report.generate_report()
         end_time = time.time()
