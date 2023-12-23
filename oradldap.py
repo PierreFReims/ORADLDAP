@@ -312,35 +312,35 @@ class ORADLDAP:
         finally:
             self._disconnect()
 
-    def check_user_password_encryption(self):
-        try:
-            # Configure TLS if LDAPS is used
-            tls_configuration = None
-            
-            # Create a connection object
-            self.connect_authenticated()
-            search_filter = '(objectClass=inetOrgPerson)'
-            self.connection.search(
-                search_base='dc=example,dc=com',
-                search_filter=search_filter,
-                search_scope=SUBTREE,
-                attributes=['userPassword']
-            )
-            if self.connection.entries:
-                for attribute in self.connection.entries:
-                    user_password = attribute.userPassword.value.decode('utf-8')
-                    if not re.match(r'{[^}]+}', user_password):
-                        self.report.add_vulnerability('vuln_no_password_encryption')
-                        break
+    def check_user_password_encryption(self,strategy="ANONYMOUS"):
         
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            print(f"{strategy} - Checking password encryption")
+            try:
+                search_filter = '(objectClass=inetOrgPerson)'
+                connection.search(
+                    search_base=self.naming_context,
+                    search_filter=search_filter,
+                    search_scope=SUBTREE,
+                    attributes=['userPassword']
+                )
+                if connection.entries:
+                    for attribute in connection.entries:
+                        user_password = attribute.userPassword.value.decode('utf-8')
+                        if not re.match(r'{[^}]+}', user_password):
+                            if strategy == "ANONYMOUS":             
+                                self.report.add_vulnerability('vuln_no_password_encryption')
+                            if strategy == "SIMPLE":                            
+                                self.report.add_vulnerability('vuln_no_password_encryption')
+                            if strategy == "ADMIN":                            
+                                self.report.add_vulnerability('vuln_no_password_encryption')
+            
+            except LDAPSocketOpenError as e:
+                print("Port {0} closed. Abording...".format(self.port))
 
-        except Exception as e:
-            print(f"Error checking ACLs: {e}")
-        finally:
-            self._disconnect()
+            except Exception as e:
+                print(f"Error checking password encryption: {e}")
 
     def _read_config(self):
         try:
@@ -373,20 +373,21 @@ class ORADLDAP:
         #self.get_config_context()
         
         # ANONYMOUS
-        self.get_naming_context(strategy="ANONYMOUS")
         self.check_anonymous_auth()
+        self.get_naming_context(strategy="ANONYMOUS")
+        self.check_user_password_encryption(strategy="ANONYMOUS")
         #self.check_all_acls()
         #self.check_default_acl_rule()
         #self.check_anonymous_acl()
         #self.check_password_write_permission()
         #self.check_ppolicy()
-        #self.check_user_password_encryption()
         
         # SIMPLE USER
         self.get_naming_context(strategy="SIMPLE")
-        
+        self.check_user_password_encryption(strategy="SIMPLE")
         # ADMIN USER
         self.get_naming_context(strategy="ADMIN")
+        self.check_user_password_encryption(strategy="ADMIN")
         
         # Close connections
         self._disconnect()

@@ -54,7 +54,7 @@
         "level": 3,
         "title": "Récupération du nom de domaine en tant qu'anonyme",
         "description": "Un utilisateur anonyme peut récupérer le nom de domaine et s'en servir pour énumérer d'avantage",
-        "recommendation": ["N'autorisez pas les connections anonymes sur le serveur"]
+        "recommendation": ["Ne pas autoriser les connections anonymes sur le serveur"]
       }
     ]
   }
