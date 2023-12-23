@@ -14,81 +14,134 @@ class ORADLDAP:
     
     def __init__(self, config_path='conf.yaml'):
         print('Init...')
+        # Declarations
         self.config = configparser.ConfigParser()
         self.config_path = config_path
         self.naming_context = None
         self.server_uri = None
-        self.bind_dn = None
-        self.bind_password = None
-        self.server = None
-        self.connection = None
-        self.logging = None
+        
+        self.simple_user = None
+        self.simple_password = None
         self.critical_ous = []
+        self.anonymous_connection = None
+        self.simple_connection = None 
+        self.admin_connection = None
+        
+        # Reading config file
         self._read_config()
-
-        self.server = Server(self.server_uri,port=self.port, use_ssl=self.use_starttls)
-        if self.admin_password == None:
-            self.admin_password = input("Mot de passe administrateur: ")
+        
+        # Server
+        self.server = Server(self.server_uri, port=self.port, get_info=ALL)
+        
+        # Connections
+        self._connect()
 
         self.report = VulnerabilityReport()
-
-    def _connect(self, anonymous=False):
+    
+    def _connect(self):
+        # Anonymous
         try:
-            # Create a server object
-            self.server = Server(self.server_uri, port=self.port, get_info=ALL)
-
-            # Connect
-            self.connection = Connection(self.server, user=self.bind_dn, password=self.bind_password, auto_bind=True)
-
+            self.anonymous_connection = Connection(self.server,auto_bind=True)
             if self.use_starttls:
-                # Start TLS if configured
-                self.connection.start_tls()
-
-            print('Connected successfully')
-
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            sys.exit(-1)
+                self.anonymous_connection.start_tls()
+            print("Anonymous connection") 
             
-    def _connect_anonymously(self):
-        self._connect(anonymous=True)
-
-    def _connect_authenticated(self):
-        self._connect(anonymous=False)
-
-    def _disconnect(self):
-        if self.connection:
-            self.connection.unbind()
-            self.server = None
-            self.connection = None
-
-    def get_naming_context(self):
-        try:
-            self._connect()
-            self.connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
-            naming_context = self.connection.entries[0]
-            naming_context = str(naming_context)
-            naming_context = naming_context.split("namingContexts:")[1].strip()
-            self.naming_context = naming_context
-            self.report.suffix = naming_context
-        
-        except LDAPSocketOpenError as e:
-            print("Socket is not opened. Abording...")
-            sys.exit(-1)
-
         except Exception as e:
-            raise ValueError(f"Error retrieving naming context: {e}")
+            print(f"An unexpected error occurred during anonymous connection: {e}")
         
-        finally:
-            self._disconnect()
-        
-        return naming_context
+        # Simple user
+        try:
+            self.simple_connection = Connection(self.server,user=self.simple_user,password=self.simple_password, auto_bind=True)
+            if self.use_starttls:
+                self.simple_connection.start_tls()
+            print("Simple connection") 
+        except Exception as e:
+            print(f"An unexpected error occurred during simple user connection: {e}")
+
+        # Admin user
+        try:
+            self.simple_connection = Connection(self.server,user=self.admin_user,password=self.admin_password, auto_bind=True)
+            if self.use_starttls:
+                self.admin_connection.start_tls()
+            print("Admin connection") 
+        except Exception as e:
+            print(f"An unexpected error occurred during admin user connection: {e}")
+
+    def disconnect(self):
+        if self.anonymous_connection:
+            self.anonymous_connection.unbind()
+        if self.simple_connection:
+            self.simple_connection.unbind()
+        if self.admin_connection:
+            self.admin_connection.unbind()
+
+    def get_naming_context(self, strategy="ANONYMOUS"):
+        if strategy == "ANONYMOUS":
+            print("ANONYMOUS - Getting naming context")
+            if self._get_naming_context_anonymous():
+                self.report.add_vulnerability('warning_naming_context')
+        elif strategy == "SIMPLE":
+            print("SIMPLE - Getting naming context")
+            return self._get_naming_context_simple()
+        elif strategy == "ADMIN":
+            print("ADMIN - Getting naming context")
+            return self._get_naming_context_admin()
+        else:
+            raise ValueError(f"Invalid strategy: {strategy}")
+
+    def _get_naming_context_anonymous(self):
+        if self.anonymous_connection:
+            try:
+                self.anonymous_connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
+                self.naming_context = str(self.anonymous_connection.entries[0]).split("namingContexts:")[1].strip()
+            
+            except LDAPSocketOpenError as e:
+                print("Socket is not opened. Abording...")
+
+            except Exception as e:
+                raise ValueError(f"Error retrieving naming context: {e}")
+            
+            return self.naming_context
+        else:
+            return
+
+    def _get_naming_context_simple(self):
+        if self.simple_connection:
+            try:
+                self.simple_connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
+                self.naming_context = str(self.simple_connection.entries[0]).split("namingContexts:")[1].strip()
+            
+            except LDAPSocketOpenError as e:
+                print("Socket is not opened. Abording...")
+
+            except Exception as e:
+                raise ValueError(f"Error retrieving naming context: {e}")
+            
+            return self.naming_context
+        else:
+            return
+
+    def _get_naming_context_admin(self):
+        if self.admin_connection:
+            try:
+                self.admin_connection.search(search_base='', search_filter='(objectclass=*)', attributes=['namingContexts'], search_scope=BASE)
+                self.naming_context = str(self.admin_connection.entries[0]).split("namingContexts:")[1].strip()
+            
+            except LDAPSocketOpenError as e:
+                print("Socket is not opened. Abording...")
+
+            except Exception as e:
+                raise ValueError(f"Error retrieving naming context: {e}")
+            
+            return self.naming_context
+        else:
+            return
 
     def get_config_context(self):
         try:
             self._connect()
             self.connection.search(search_base='', search_filter='(objectclass=*)', attributes=['*'],search_scope='BASE')
-            config_context = str(self.server.info).split("configContext:")[1].lstrip().split("\n")[0]
+            self.config_context = str(self.server.info).split("configContext:")[1].lstrip().split("\n")[0]
         
         except LDAPSocketOpenError as e:
             print("Port {0} closed. Abording...".format(self.port))
@@ -97,25 +150,15 @@ class ORADLDAP:
         except Exception as e:
             raise ValueError(f"Error retrieving config context: {e}")
         
-        finally:
-            self._disconnect()
-        
-        return config_context
+        return self.config_context
 
     def check_anonymous_auth(self):
-        try:
-            self._connect_anonymously()
+        print("ANONYMOUS - Check anonymous auths")
+        if self.anonymous_connection:
             self.report.add_vulnerability('vuln_allow_anon_auth')
             return True
-        
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
-
-        except Exception as e:
+        else:
             return False
-        finally:
-            self._disconnect()
        
     def check_anonymous_acl(self):
         try:
@@ -144,11 +187,11 @@ class ORADLDAP:
             # Handle the exception as needed
             print(f"Error checking anonymous ACL: {e}")
         finally:
-            self._disconnect()
+            self.disconnect()
 
     def check_all_acls(self):
         try:
-            self._connect()
+            self.connect_authenticated()
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
             if not len(self.connection.entries) == 0:
                 acls_entry = str(self.connection.entries[0])
@@ -195,11 +238,11 @@ class ORADLDAP:
         except Exception as e:
             print(f"Error checking ACLs: {e}")
         finally:
-            self._disconnect()
+            self.disconnect()
 
     def check_default_acl_rule(self):
         try:
-            self._connect()
+            self.connect_authenticated()
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
             if not len(self.connection.entries) == 0:
                 acls_entry = str(self.connection.entries[0])
@@ -224,14 +267,14 @@ class ORADLDAP:
         except Exception as e:
             print(f"Error checking ACLs: {e}")
         finally:
-            self._disconnect()
+            self.disconnect()
 
     def check_password_write_permission(self):
         users_to_check = self.critical_ous
         users_to_check.append("self")
         users_with_write_permissions = []
         try:
-            self._connect()
+            self.connect_authenticated()
             self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
             acls_entry = str(self.connection.entries[0])
             parser = OpenLDAPACLParser(acls_entry)
@@ -257,12 +300,12 @@ class ORADLDAP:
             # Handle the exception as needed
             print(f"Error checking anonymous ACL: {e}")
         finally:
-            self._disconnect()
+            self.disconnect()
 
     def check_ppolicy(self):
         try:
             # Search for ppolicy configuration
-            self._connect()
+            self.connect_authenticated()
             
             self.connection.search(
                 search_base=self.get_config_context(),
@@ -282,18 +325,15 @@ class ORADLDAP:
         except Exception as e:
             self.report.add_vulnerability('vuln_missing_ppolicy')
         finally:
-            self._disconnect()
+            self.disconnect()
 
     def check_user_password_encryption(self):
         try:
             # Configure TLS if LDAPS is used
             tls_configuration = None
-            # Create a server object
-            self.server = Server(f"{self.server_uri}:{self.port}", get_info=ALL, use_ssl=self.use_starttls, tls=tls_configuration)
-
             
             # Create a connection object
-            self.connection = Connection(self.server, user="cn=admin,dc=example,dc=com", password='secret', auto_bind=True)
+            self.connect_authenticated()
             search_filter = '(objectClass=inetOrgPerson)'
             self.connection.search(
                 search_base='dc=example,dc=com',
@@ -315,7 +355,7 @@ class ORADLDAP:
         except Exception as e:
             print(f"Error checking ACLs: {e}")
         finally:
-            self._disconnect()
+            self.disconnect()
 
     def _read_config(self):
         try:
@@ -323,12 +363,19 @@ class ORADLDAP:
                 data = yaml.safe_load(f)
                 self.server_uri = data['ldap']['server_uri']
                 self.port = data['ldap']['port']
+                self.simple_user = data['ldap']['simple_user']   
+                self.simple_password = data['ldap']['simple_password'] 
                 self.admin_user = data['ldap']['admin_user']   
                 self.admin_password = data['ldap']['admin_password'] 
                 self.use_starttls = data['ldap']['use_starttls'] 
                 for critical_ou in data['ldap']['critical_ous']:
                     self.critical_ous.append(critical_ou)
                 print('Reading conf..')
+
+                if self.simple_password == None:
+                    self.simple_password = input("Mot de passe utilisateur simple: ")
+                if self.admin_password == None:
+                    self.admin_password = input("Mot de passe utilisateur administrateur: ")
 
         except (configparser.Error, ValueError) as e:
             raise ValueError(f"Error reading configuration: {e}")
@@ -337,15 +384,25 @@ class ORADLDAP:
         start_time = time.time()
 
         # Security Checks
-        self.get_naming_context()
-        self.get_config_context()
+        
+        #self.get_config_context()
+        
+        # ANONYMOUS
+        self.get_naming_context(strategy="ANONYMOUS")
         self.check_anonymous_auth()
-        self.check_all_acls()
-        self.check_default_acl_rule()
-        self.check_anonymous_acl()
-        self.check_password_write_permission()
+        
+        #self.check_all_acls()
+        #self.check_default_acl_rule()
+        #self.check_anonymous_acl()
+        #self.check_password_write_permission()
         #self.check_ppolicy()
         #self.check_user_password_encryption()
+        
+        # SIMPLE USER
+        self.get_naming_context(strategy="SIMPLE")
+        
+        # ADMIN USER
+        self.get_naming_context(strategy="ADMIN")
         
         # Report Generation
         self.report.generate_report()
@@ -355,6 +412,14 @@ class ORADLDAP:
 
     def __del__(self):
         # Close the LDAP connection when the object is destroyed
-        if self.connection:
-            self.connection.unbind()
-    
+        if self.anonymous_connection:
+            self.anonymous_connection.unbind()
+        if self.simple_connection:
+            self.simple_connection.unbind()
+        if self.admin_connection:
+            self.admin_connection.unbind()
+
+        self.server = None
+        self.anonymous_connection = None
+        self.simple_connection = None
+        self.admin_connection = None
