@@ -83,7 +83,7 @@ class ORADLDAP:
     def _get_connection_by_strategy(self, strategy):
         if strategy == "ANONYMOUS":
             return self.anonymous_connection
-        elif strategy == "SIMPLE":
+        elif strategy == "AUTHENTICATED":
             return self.simple_connection
         elif strategy == "ADMIN":
             return self.admin_connection
@@ -116,7 +116,7 @@ class ORADLDAP:
         print(f"{strategy} - Getting naming context")
         if strategy == "ANONYMOUS":
             var = ''
-        elif strategy == "SIMPLE":
+        elif strategy == "AUTHENTICATED":
             var = ''
         elif strategy == "ADMIN":
             var = ''
@@ -288,29 +288,26 @@ class ORADLDAP:
             self._disconnect()
 
     def check_ppolicy(self):
-        try:
-            # Search for ppolicy configuration
-            self.connect_authenticated()
-            
-            self.connection.search(
-                search_base=self.get_config_context(),
-                search_filter='(objectClass=olcPpolicyConfig)',
-                search_scope=SUBTREE,
-                attributes=[ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES]
-            )
-            if not self.connection.entries:
-                self.report.add_vulnerability('vuln_missing_ppolicy')
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
+        if self.admin_connection:
+            print(f"{strategy} - Check ppolicy")
+            try:
+                self.admin_connection.search(
+                    search_base=self.get_config_context(),
+                    search_filter='(objectClass=olcPpolicyConfig)',
+                    search_scope=SUBTREE,
+                    attributes=[ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES]
+                )
+                if not self.connection.entries:
+                    self.report.add_vulnerability('vuln_missing_ppolicy')
+            except LDAPSocketOpenError as e:
+                print("Port {0} closed. Abording...".format(self.port))
+                sys.exit(-1)
 
-        except LDAPObjectClassError as e:
-            self.report.add_vulnerability('vuln_missing_ppolicy')
-        
-        except Exception as e:
-            self.report.add_vulnerability('vuln_missing_ppolicy')
-        finally:
-            self._disconnect()
+            except LDAPObjectClassError as e:
+                self.report.add_vulnerability('vuln_missing_ppolicy')
+            
+            except Exception as e:
+                self.report.add_vulnerability('vuln_missing_ppolicy')
 
     def check_user_password_encryption(self,strategy="ANONYMOUS"):
         
@@ -331,7 +328,7 @@ class ORADLDAP:
                         if not re.match(r'{[^}]+}', user_password):
                             if strategy == "ANONYMOUS":             
                                 self.report.add_vulnerability('vuln_no_password_encryption')
-                            if strategy == "SIMPLE":                            
+                            if strategy == "AUTHENTICATED":                            
                                 self.report.add_vulnerability('vuln_no_password_encryption')
                             if strategy == "ADMIN":                            
                                 self.report.add_vulnerability('vuln_no_password_encryption')
@@ -382,13 +379,15 @@ class ORADLDAP:
         #self.check_password_write_permission()
         #self.check_ppolicy()
         
-        # SIMPLE USER
-        self.get_naming_context(strategy="SIMPLE")
-        self.check_user_password_encryption(strategy="SIMPLE")
+        # AUTHENTICATED USER
+        self.get_naming_context(strategy="AUTHENTICATED")
+        self.check_user_password_encryption(strategy="AUTHENTICATED")
+        
         # ADMIN USER
         self.get_naming_context(strategy="ADMIN")
         self.check_user_password_encryption(strategy="ADMIN")
-        
+        self.check_ppolicy()
+
         # Close connections
         self._disconnect()
 

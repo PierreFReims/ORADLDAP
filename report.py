@@ -38,7 +38,7 @@ class VulnerabilityReport:
             self.write_html_footer(file)
 
     def write_html_header(self, file):
-        file.write('<html>\n<head>\n<title>Vulnerability Report</title>\n</head>\n<link href="./style.css" rel="stylesheet"><link href="./bootstrap.min.css" rel="stylesheet">\n<meta charset="utf-8"><body>\n')
+        file.write('<html>\n<head>\n<title>Vulnerability Report</title>\n</head>\n<link href="./style.css" rel="stylesheet"><link href="./bootstrap.min.css" rel="stylesheet">\n<meta name="viewport" content="width=device-width, initial-scale=1.0"><meta charset="utf-8"><body>\n')
         file.write('<style> .hidden { display: none; } </style>\n')
 
     def write_report_heading(self, file):
