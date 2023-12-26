@@ -34,7 +34,7 @@ class ORADLDAP:
         self._read_config()
         
         # Server
-        self.server = Server(self.server_uri, port=self.port, get_info=ALL)
+        self.server = Server(self.server_uri, port=self.port, get_info=ALL) 
         
         # Connections
         self._connect()
@@ -52,7 +52,7 @@ class ORADLDAP:
         except Exception as e:
             print(f"An unexpected error occurred during anonymous connection: {e}")
         
-        # Simple user
+        # Authenticated user
         try:
             self.simple_connection = Connection(self.server,user=self.simple_user,password=self.simple_password, auto_bind=True)
             self.strategy = "AUTHENTICATED"
@@ -113,7 +113,14 @@ class ORADLDAP:
             return self.naming_context
 
     def get_subentries(self,strategy="ANONYMOUS"):
-        print(f"{strategy} - Getting naming context")
+
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            print(f"{strategy} - Getting naming context")
+            connection.search(self.naming_context, "(objectClass=*)", attributes="*")
+            if connection.entries:
+                for entry in connection.entries:
+                    print(entry.entry_to_json())
         if strategy == "ANONYMOUS":
             var = ''
         elif strategy == "AUTHENTICATED":
@@ -373,6 +380,7 @@ class ORADLDAP:
         self.check_anonymous_auth()
         self.get_naming_context(strategy="ANONYMOUS")
         self.check_user_password_encryption(strategy="ANONYMOUS")
+        self.get_subentries(strategy="ANONYMOUS")
         #self.check_all_acls()
         #self.check_default_acl_rule()
         #self.check_anonymous_acl()
@@ -382,6 +390,7 @@ class ORADLDAP:
         # AUTHENTICATED USER
         self.get_naming_context(strategy="AUTHENTICATED")
         self.check_user_password_encryption(strategy="AUTHENTICATED")
+        #self.get_subentries(strategy="AUTHENTICATED")
         
         # ADMIN USER
         self.get_naming_context(strategy="ADMIN")

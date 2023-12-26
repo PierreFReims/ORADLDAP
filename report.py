@@ -51,9 +51,9 @@ class VulnerabilityReport:
         file.write('<h1 class="text-center">Rapport de sécurité</h1>\n')
         file.write('<div class="container-fluid">')
         if self.suffix is not None:
-            file.write('<p>Naming Context: <span>{0}</span></p>\n'.format(self.suffix))
+            file.write("<p>Contexte de nommage: <span>{0}</span></p>\n".format(self.suffix))
         if self.strategy:
-            file.write('<p>Execution Strategy: <span>{0}</span></p>'.format(self.strategy))
+            file.write("<p>Stratégie d'éxécution: <span>{0}</span></p>".format(self.strategy))
     def write_vulnerabilities(self, file):
         file.write("""<table class="table table-bordered table-light">
   <thead>

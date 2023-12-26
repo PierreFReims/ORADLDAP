@@ -4,7 +4,7 @@ ldap:
   simple_user: cn=admin,dc=my-company,dc=com
   simple_password: JonSn0w
   admin_user: cn=admin,cn=config
-  admin_password: JonSn0w
+  admin_password:  JonSn0w
   use_starttls: False
   critical_ous:
     - ou=Admins,ou=IT,dc=example,dc=com
