@@ -64,7 +64,7 @@ class ORADLDAP:
 
         # Admin user
         try:
-            self.simple_connection = Connection(self.server,user=self.admin_user,password=self.admin_password, auto_bind=True)
+            self.admin_connection = Connection(self.server,user=self.admin_user,password=self.admin_password, auto_bind=True)
             self.strategy = "ADMIN"
             if self.use_starttls:
                 self.admin_connection.start_tls()
@@ -120,7 +120,7 @@ class ORADLDAP:
             connection.search(self.naming_context, "(objectClass=*)", attributes="*")
             if connection.entries:
                 for entry in connection.entries:
-                    print(entry.entry_to_json())
+                    entry.entry_to_json()
         if strategy == "ANONYMOUS":
             var = ''
         elif strategy == "AUTHENTICATED":
@@ -129,20 +129,6 @@ class ORADLDAP:
             var = ''
         else:
             raise ValueError(f"Invalid strategy: {strategy}")
-
-    def _get_subentries_anonymous(self):
-        if self.anonymous_connection:
-            try:
-                # Search for subentries in the Root DSE
-                result = connection.search(base=self.naming_context, scope=ldap.SCOPE_SUBTREE, filterstr="(objectClass=*)", attrlist=["subschemaSubentry"])
-                
-                # Extract subentries from the result
-                subentries = [entry[1]["subschemaSubentry"][0].decode('utf-8') for entry in result if "subschemaSubentry" in entry[1]]
-                return subentries
-            except Exception as e:
-                raise ValueError(f"Error retrieving naming context: {e}")
-        else:
-            return
     
     def check_anonymous_auth(self):
         print("ANONYMOUS - Check anonymous auths")
@@ -152,172 +138,160 @@ class ORADLDAP:
         else:
             return False
        
-    def check_anonymous_acl(self):
-        try:
-            self._connect_anonymously()
-            self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-            if not len(self.connection.entries) == 0:
-                acls = str(self.connection.entries[0]).split("olcAccess:")[1].split("\n")
-                userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
-                by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
-                for acl in acls:
-                    acl = acl.strip()
-                    match = re.search(userPassword_attribute, acl)
-                    if match:
-                        matches = by_pattern.findall(acl)
-                        # Check if 'anonymous' has permissions other than 'none'
-                        anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
-                        if 'none' not in anonymous_permissions:
-                            self.report.add_vulnerability('vuln_anonymous_dangerous_perms')
-                        return anonymous_permissions        
-        
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
+    def check_anonymous_acl(self,strategy="ANONYMOUS"):
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            print(f"{strategy} - Checking anonymous ACLs")
+            try:
+                connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
+                if not len(connection.entries) == 0:
+                    print(connection.entries)
+                    acls = str(connection.entries[0]).split("olcAccess:")[1].split("\n")
+                    userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
+                    by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
+                    for acl in acls:
+                        acl = acl.strip()
+                        match = re.search(userPassword_attribute, acl)
+                        if match:
+                            matches = by_pattern.findall(acl)
+                            # Check if 'anonymous' has permissions other than 'none'
+                            anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
+                            if 'none' not in anonymous_permissions:
+                                self.report.add_vulnerability('vuln_anonymous_dangerous_perms')
+                            return anonymous_permissions        
 
-        except Exception as e:
-            # Handle the exception as needed
-            print(f"Error checking anonymous ACL: {e}")
-        finally:
-            self._disconnect()
+            except Exception as e:
+                # Handle the exception as needed
+                logging.error(f"Error checking anonymous ACL: {e}")
 
-    def check_all_acls(self):
-        try:
-            self.connect_authenticated()
-            self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-            if not len(self.connection.entries) == 0:
-                acls_entry = str(self.connection.entries[0])
-                result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
-                if acls_entry:
-                    parser = OpenLDAPACLParser(acls_entry)
-                    acls = parser.get_acls()
-                    dangerous_permissions = []
-                    for acl_entry in acls:
-                        target_attribute = acl_entry.get('to', '')
-                        permissions = acl_entry.get('by', [])
-                        for permission in permissions:
-                            entity = permission.get('entity', '')
-                            permission_type = permission.get('permission', '')
-                            if permission_type == 'write' and entity != 'self':
-                                # Check for dangerous write permissions on attributes other than userPassword
-                                dangerous_permissions.append({
-                                    'target_attribute': target_attribute,
-                                    'entity': entity,
-                                    'permission_type': permission_type
-                                })
-                            elif permission_type == 'auth' and entity == 'anonymous':
-                                # Check for dangerous auth permissions for anonymous users
-                                dangerous_permissions.append({
-                                    'target_attribute': target_attribute,
-                                    'entity': entity,
-                                    'permission_type': permission_type
-                                })
-                    # Print the results
-                    if dangerous_permissions:
-                        self.report.add_vulnerability('vuln_dangerous_acls')
-                        #print("Dangerous permissions found:")
-                        for entry in dangerous_permissions:
+    def check_all_acls(self,strategy="ANONYMOUS"):
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            print(f"{strategy} - Checking all ACLs")
+            try:
+                connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
+                if not len(connection.entries) == 0:
+                    print(connection.entries)
+                    acls_entry = str(connection.entries[0])
+
+                    result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
+                    if acls_entry:
+                        parser = OpenLDAPACLParser(acls_entry)
+                        acls = parser.get_acls()
+                        dangerous_permissions = []
+                        for acl_entry in acls:
+                            target_attribute = acl_entry.get('to', '')
+                            permissions = acl_entry.get('by', [])
+                            for permission in permissions:
+                                entity = permission.get('entity', '')
+                                permission_type = permission.get('permission', '')
+                                if permission_type == 'write' and entity != 'self':
+                                    # Check for dangerous write permissions on attributes other than userPassword
+                                    dangerous_permissions.append({
+                                        'target_attribute': target_attribute,
+                                        'entity': entity,
+                                        'permission_type': permission_type
+                                    })
+                                elif permission_type == 'auth' and entity == 'anonymous':
+                                    # Check for dangerous auth permissions for anonymous users
+                                    dangerous_permissions.append({
+                                        'target_attribute': target_attribute,
+                                        'entity': entity,
+                                        'permission_type': permission_type
+                                    })
+                        # Print the results
+                        if dangerous_permissions:
+                            self.report.add_vulnerability('vuln_dangerous_acls')
+                            #print("Dangerous permissions found:")
+                            for entry in dangerous_permissions:
+                                var = 'ok'
+                                #print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
+                        else:
                             var = 'ok'
-                            #print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
-                    else:
-                        var = 'ok'
-                        #print("No dangerous permissions found.")
+                            #print("No dangerous permissions found.")
 
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
+            except Exception as e:
+                logging.error(f"Error checking ACLs: {e}")
 
-        except Exception as e:
-            print(f"Error checking ACLs: {e}")
-        finally:
-            self._disconnect()
+    def check_default_acl_rule(self,strategy="ANONYMOUS"):
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            print(f"{strategy} - Check default ACL rule")
+            try:
+                connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
+                if not len(connection.entries) == 0:
+                    acls_entry = str(connection.entries[0])
+                    result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
+                    if acls_entry:
+                        parser = OpenLDAPACLParser(acls_entry)
+                        acls = parser.get_acls()
+                        if(
+                            acls[-1]['to'] == '*'
+                            and any(entry["entity"] == "*" and entry["permission"] == "none" for entry in acls[-1]['by'])
+                        ):
+                            var = 'ok'
+                            #print('No permissions')
+                        else:
+                            self.report.add_vulnerability('vuln_dangerous_default_acl')
+                            #print('Default ACL rule is dangerous')
+            except Exception as e:
+                logging.warning("Error checking ACLs: {e}")
 
-    def check_default_acl_rule(self):
-        try:
-            self.connect_authenticated()
-            self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-            if not len(self.connection.entries) == 0:
-                acls_entry = str(self.connection.entries[0])
-                result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
-                if acls_entry:
-                    parser = OpenLDAPACLParser(acls_entry)
-                    acls = parser.get_acls()
-                    if(
-                        acls[-1]['to'] == '*'
-                        and any(entry["entity"] == "*" and entry["permission"] == "none" for entry in acls[-1]['by'])
-                    ):
-                        var = 'ok'
-                        #print('No permissions')
-                    else:
-                        self.report.add_vulnerability('vuln_dangerous_default_acl')
-                        #print('Default ACL rule is dangerous')
-        
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
-
-        except Exception as e:
-            print(f"Error checking ACLs: {e}")
-        finally:
-            self._disconnect()
-
-    def check_password_write_permission(self):
+    def check_password_write_permission(self,strategy="ANONYMOUS"):
         users_to_check = self.critical_ous
         users_to_check.append("self")
         users_with_write_permissions = []
-        try:
-            self.connect_authenticated()
-            self.connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-            acls_entry = str(self.connection.entries[0])
-            parser = OpenLDAPACLParser(acls_entry)
-            acls = parser.get_acls()
-            for acl in acls:
-                by_rules = acl.get('by', [])
-                for rule in by_rules:
-                    entity = rule.get('entity', '')
-                    permission = rule.get('permission', '')
-                    # Check for write permission first
-                    if permission == 'write' and (entity == '*' or entity not in users_to_check):
-                        # Check the 'to' attribute after write permission
-                        to_attribute = acl.get('to', '')
-                        if 'userPassword' in to_attribute or '*' in to_attribute:
-                            self.report.add_vulnerability('vuln_userpassword_write_perm')
-                            # Additional checks or actions based on the 'to' attribute if needed
 
-        except LDAPSocketOpenError as e:
-            print("Port {0} closed. Abording...".format(self.port))
-            sys.exit(-1)
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            print(f"{strategy} - Check password write permision")
+            try:
+                connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
+                if connection.entries:
+                    acls_entry = str(connection.entries[0])
+                    parser = OpenLDAPACLParser(acls_entry)
+                    acls = parser.get_acls()
+                    for acl in acls:
+                        by_rules = acl.get('by', [])
+                        for rule in by_rules:
+                            entity = rule.get('entity', '')
+                            permission = rule.get('permission', '')
+                            # Check for write permission first
+                            if permission == 'write' and (entity == '*' or entity not in users_to_check):
+                                # Check the 'to' attribute after write permission
+                                to_attribute = acl.get('to', '')
+                                if 'userPassword' in to_attribute or '*' in to_attribute:
+                                    self.report.add_vulnerability('vuln_userpassword_write_perm')
+                                    # Additional checks or actions based on the 'to' attribute if needed
 
-        except Exception as e:
-            # Handle the exception as needed
-            print(f"Error checking anonymous ACL: {e}")
-        finally:
-            self._disconnect()
+            except LDAPSocketOpenError as e:
+                print("Port {0} closed. Abording...".format(self.port))
+                sys.exit(-1)
 
-    def check_ppolicy(self):
-        if self.admin_connection:
+            except Exception as e:
+                # Handle the exception as needed
+                print(f"Error checking anonymous ACL: {e}")
+
+    def check_ppolicy(self,strategy="ANONYMOUS"):
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
             print(f"{strategy} - Check ppolicy")
             try:
-                self.admin_connection.search(
+                connection.search(
                     search_base=self.get_config_context(),
                     search_filter='(objectClass=olcPpolicyConfig)',
                     search_scope=SUBTREE,
                     attributes=[ALL_ATTRIBUTES, ALL_OPERATIONAL_ATTRIBUTES]
                 )
-                if not self.connection.entries:
+                if not connection.entries:
                     self.report.add_vulnerability('vuln_missing_ppolicy')
-            except LDAPSocketOpenError as e:
-                print("Port {0} closed. Abording...".format(self.port))
-                sys.exit(-1)
-
             except LDAPObjectClassError as e:
                 self.report.add_vulnerability('vuln_missing_ppolicy')
             
             except Exception as e:
-                self.report.add_vulnerability('vuln_missing_ppolicy')
+                logging.warning(e)
 
     def check_user_password_encryption(self,strategy="ANONYMOUS"):
-        
         connection = self._get_connection_by_strategy(strategy)
         if connection:
             print(f"{strategy} - Checking password encryption")
@@ -332,16 +306,9 @@ class ORADLDAP:
                 if connection.entries:
                     for attribute in connection.entries:
                         user_password = attribute.userPassword.value.decode('utf-8')
-                        if not re.match(r'{[^}]+}', user_password):
-                            if strategy == "ANONYMOUS":             
-                                self.report.add_vulnerability('vuln_no_password_encryption')
-                            if strategy == "AUTHENTICATED":                            
-                                self.report.add_vulnerability('vuln_no_password_encryption')
-                            if strategy == "ADMIN":                            
-                                self.report.add_vulnerability('vuln_no_password_encryption')
-            
-            except LDAPSocketOpenError as e:
-                print("Port {0} closed. Abording...".format(self.port))
+                        if not re.match(r'{[^}]+}', user_password):           
+                            self.report.add_vulnerability('vuln_no_password_encryption')
+
 
             except Exception as e:
                 print(f"Error checking password encryption: {e}")
@@ -381,22 +348,21 @@ class ORADLDAP:
         self.get_naming_context(strategy="ANONYMOUS")
         self.check_user_password_encryption(strategy="ANONYMOUS")
         self.get_subentries(strategy="ANONYMOUS")
-        #self.check_all_acls()
-        #self.check_default_acl_rule()
-        #self.check_anonymous_acl()
-        #self.check_password_write_permission()
-        #self.check_ppolicy()
         
         # AUTHENTICATED USER
         self.get_naming_context(strategy="AUTHENTICATED")
         self.check_user_password_encryption(strategy="AUTHENTICATED")
-        #self.get_subentries(strategy="AUTHENTICATED")
+        self.get_subentries(strategy="AUTHENTICATED")
         
         # ADMIN USER
         self.get_naming_context(strategy="ADMIN")
         self.check_user_password_encryption(strategy="ADMIN")
-        self.check_ppolicy()
-
+        self.check_ppolicy(strategy="ADMIN")
+        self.check_all_acls(strategy="ADMIN")
+        self.check_default_acl_rule(strategy="ADMIN")
+        self.check_anonymous_acl(strategy="ADMIN")
+        self.check_password_write_permission(strategy="ADMIN")
+        self.get_subentries(strategy="ADMIN")
         # Close connections
         self._disconnect()
 
