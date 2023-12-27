@@ -3,9 +3,9 @@ ORADLDAP, acronyme pour "Outil de Récupération Automatique de Données LDAP", 
 
 Les points de contrôle s'effectuent sur deux bases distinctes : l'Arbre d'Information du Répertoire (DIT) et la base de configuration cn=config. Le script est exécuté avec trois niveaux de privilèges différents :
 
-    Utilisateur Anonyme : Fournit des informations minimales.
-    Utilisateur Authentifié : Offre des résultats plus détaillés.
-    Utilisateur Administrateur : Fournit les résultats les plus complets et précis.
+*   Utilisateur Anonyme : Fournit des informations minimales.
+*   Utilisateur Authentifié : Offre des résultats plus détaillés.
+*   Utilisateur Administrateur : Fournit les résultats les plus complets et précis.
 
 Bien qu'il ne soit pas obligatoire de fournir des informations d'identification d'utilisateur authentifié, le faire améliore considérablement la précision des résultats.
 
