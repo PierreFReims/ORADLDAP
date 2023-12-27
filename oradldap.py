@@ -1,4 +1,5 @@
 import configparser
+import json
 import yaml
 import time
 import ssl
@@ -173,7 +174,6 @@ class ORADLDAP:
                 if not len(connection.entries) == 0:
                     print(connection.entries)
                     acls_entry = str(connection.entries[0])
-
                     result_string = re.sub(r'^\s+', '', acls_entry, flags=re.MULTILINE)
                     if acls_entry:
                         parser = OpenLDAPACLParser(acls_entry)
@@ -313,6 +313,48 @@ class ORADLDAP:
             except Exception as e:
                 print(f"Error checking password encryption: {e}")
 
+    def check_nested_groups(self,strategy="ANONYMOUS"):
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            connection.search(self.naming_context, "(objectClass=groupOfNames)", attributes=ALL_ATTRIBUTES)
+            if not connection.entries:
+                logging.warning("not found.")
+                return
+            for group in connection.entries:
+                group.entry_to_json()
+
+
+    def _check_groups(self, strategy="ANONYMOUS",base_dn=None):
+        connection = self._get_connection_by_strategy(strategy)
+        if connection:
+            try:
+                # If base_dn is not provided, use the Root DSE
+                base_dn = base_dn or self.naming_context 
+
+                # Search for groups in the specified base_dn
+                connection.search(base_dn, "(|(objectClass=groupOfNames)(objectClass=groupOfUniqueNames))", SUBTREE, attributes=['cn', 'member'])
+
+                # Extract and print the group names
+                for group_entry in connection.entries:
+                    group_dict = json.loads(group_entry.entry_to_json())['attributes']
+                    print(group)
+                    group_name = group_dict.get('cn', '')
+                    members_list = group_dict.get('member', [])
+
+                    print(f"Group: {group_name}")
+
+                    # Recursively check nested groups for each member attribute
+                    for members in members_list:
+                        if isinstance(members, list):
+                            for member in members:
+                                self._check_groups(strategy=strategy, base_dn=member)
+                        else:
+                            self._check_groups(strategy=strategy, base_dn=members)
+
+            except Exception as e:
+                print(f"Error checking groups: {e}")
+
+
     def _read_config(self):
         try:
             with open(self.config_path) as f:
@@ -363,6 +405,8 @@ class ORADLDAP:
         self.check_anonymous_acl(strategy="ADMIN")
         self.check_password_write_permission(strategy="ADMIN")
         self.get_subentries(strategy="ADMIN")
+        self.check_nested_groups(strategy="ADMIN")
+        self._check_groups(strategy="ADMIN")
         # Close connections
         self._disconnect()
 
