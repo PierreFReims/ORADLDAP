@@ -305,8 +305,11 @@ class ORADLDAP:
                 )
                 if connection.entries:
                     for attribute in connection.entries:
-                        user_password = attribute.userPassword.value.decode('utf-8')
-                        if not re.match(r'{[^}]+}', user_password):           
+                        attribute = json.loads(attribute.entry_to_json())
+                        user_password = attribute['attributes']['userPassword']
+                        if len(user_password) == 0:
+                            return
+                        if not re.match(r'{[^}]+}', user_password[0]):           
                             self.report.add_vulnerability('vuln_no_password_encryption')
 
 
