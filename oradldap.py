@@ -335,7 +335,7 @@ class ORADLDAP:
                 base_dn = base_dn or self.naming_context 
 
                 # Search for groups in the specified base_dn
-                connection.search(base_dn, "(|(objectClass=groupOfNames)(objectClass=groupOfUniqueNames))", SUBTREE, attributes=['cn', 'member'])
+                connection.search(base_dn, "(|(objectClass=groupOfNames)(objectClass=groupOfUniqueNames))", SUBTREE, attributes=['member'])
 
                 # Extract and print the group names
                 for group_entry in connection.entries:
