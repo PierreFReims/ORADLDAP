@@ -6,6 +6,5 @@ ldap:
   admin_user: cn=admin,dc=example,dc=com
   admin_password:  secret
   use_starttls: False
-  critical_ous:
-    - ou=Admins,ou=IT,dc=example,dc=com
-    - ou=Heldesk,ou=IT,dc=example,dc=com
+  critical_groups:
+    - cn=admins,ou=groups,dc=example,dc=com

@@ -38,8 +38,12 @@ class VulnerabilityReport:
             self.write_html_footer(file)
 
     def write_html_header(self, file):
-        file.write('<html>\n<head>\n<title>Vulnerability Report</title>\n</head>\n<link href="./style.css" rel="stylesheet"><link href="./bootstrap.min.css" rel="stylesheet">\n<meta name="viewport" content="width=device-width, initial-scale=1.0"><meta charset="utf-8"><body>\n')
+        file.write('<html>\n<head>\n<title>Vulnerability Report</title>\n</head>\n<link href="./style.css" rel="stylesheet"><link href="./bootstrap.min.css" rel="stylesheet">\n<meta name="viewport" content="width=device-width, initial-scale=1.0"><meta charset="utf-8">\n')
+        file.write('<link rel="icon" type="image/jpeg" href="anfsi_logo.jpeg"/>\n')
+        file.write('<link rel="stylesheet" href="node_modules/vis-network/dist/dist/vis-network.min.css">')
         file.write('<style> .hidden { display: none; } </style>\n')
+        file.write('<body>\n')
+        file.write('<script src="node_modules/vis-network/dist/vis-network.min.js"></script>')
 
     def write_report_heading(self, file):
         file.write("""<nav class="navbar">
@@ -55,6 +59,9 @@ class VulnerabilityReport:
         if self.strategy:
             file.write("<p>Stratégie d'éxécution: <span>{0}</span></p>".format(self.strategy))
     def write_vulnerabilities(self, file):
+        file.write('<p><h3>Visualisation du répertoire</h3></p>')
+        file.write('<div class="container-sm border" id="network"></div>\n')
+        file.write('<p><h3>Vulnerabilitiés trouvées</h3></p>')
         file.write("""<table class="table table-bordered table-light">
   <thead>
     <tr>
@@ -91,7 +98,8 @@ class VulnerabilityReport:
                'descriptionRow.style.display = (descriptionRow.style.display === "none") ? "table-row" : "none";'
                'recommendationRow.style.display = (recommendationRow.style.display === "none") ? "table-row" : "none";'
                '}'
-               '</script>')
+               '</script>\n')
+        file.write('<script src="scripts/visualization.js"></script>')
 
     def write_html_footer(self, file):
         file.write('</body>\n</html>\n')

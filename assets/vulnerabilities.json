@@ -55,6 +55,13 @@
         "title": "Récupération du nom de domaine en tant qu'anonyme",
         "description": "Un utilisateur anonyme peut récupérer le nom de domaine et s'en servir pour énumérer d'avantage",
         "recommendation": ["Ne pas autoriser les connections anonymes sur le serveur"]
+      },
+      {
+        "id": "warning_nested_groups",
+        "level": 2,
+        "title": "Groupe imbriqué avec des permissions élevées",
+        "description": "Tous les utilisateurs et groupes enfants présents dans un groupe parents, héritentent de ses permissions",
+        "recommendation": ["Eviter l'imbrication de groupes"]
       }
     ]
   }
