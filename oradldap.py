@@ -314,38 +314,6 @@ class ORADLDAP:
             except Exception as e:
                 print(f"Error checking password encryption: {e}")
 
-    def check_nested_groups(self, group_dn=None, strategy="ANONYMOUS"):
-        print('Critical groups: ',self.critical_groups)
-        connection = self._get_connection_by_strategy(strategy)
-        if not connection:
-            return
-        print(f"{strategy} - Checking nested groups")
-        if group_dn is not None:
-            self._check_nested_groups_recursive(connection, group_dn, set())
-        else:
-            logging.warning("Group DN is not provided.")
-
-    def _check_nested_groups_recursive(self, connection, group_dn, visited_groups):
-        if group_dn in visited_groups:
-            # Avoid infinite recursion for circular references
-            return
-
-        visited_groups.add(group_dn)
-
-        # Search for the group entry to get the 'member' attribute
-        connection.search(group_dn, "(|(objectClass=groupOfNames)(objectClass=groupOfUniqueNames))", SUBTREE, attributes=['member'])
-
-        if not connection.entries:
-            logging.warning(f"Group {group_dn} not found.")
-            return
-
-        for group_entry in connection.entries:
-            group = group_entry.entry_to_json()
-            # Recursively check nested groups
-            for member_dn in group_entry.member.values if 'member' in group_entry else []:
-                #self.report.add_vulnerability('warning_nested_groups')
-                self._check_nested_groups_recursive(connection, member_dn, visited_groups)
-
     def collect_ldap_data(self, strategy="ANONYMOUS"):
         """
         Collects information from an OpenLDAP directory and generates nodes and edges for a vis.js graph.
@@ -369,7 +337,7 @@ class ORADLDAP:
 
         # Predefined styles for entry types
         style_mapping = {
-            'organization': {'shape': 'box', 'color': '#FF5733', 'size': 30},
+            'organization': {'shape': 'square', 'color': '#FF5733', 'size': 30},
             'organizationalUnit': {'shape': 'box', 'color': {'border': '#2B7CE9', 'background': '#97C2FC', 'size': 15}},
             'organizationalPerson': {'shape': 'ellipse', 'color': '#33FF57', 'size': 15},
             'groupOfNames': {'shape': 'diamond', 'color': '#5733FF', 'size': 25},
@@ -377,16 +345,16 @@ class ORADLDAP:
         }
 
         # Process LDAP entries
+        entry_info = {}
         for entry in entries:
             id = None
             label = None
             entry_options = {'id': id, 'label': label}
 
-            # Check each object class
             #Organization
             if "organization" in entry.objectClass:
                 print("Organization type")
-                entry_options['id'] = entry.dc.value
+                entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.o.value
                 entry_options['shape'] = 'square'
                 entry_options['group'] = 'organization'  # Set a group for organization nodes
@@ -396,15 +364,23 @@ class ORADLDAP:
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.ou.value
                 entry_options['shape'] = 'triangle'
+
+                # Store information about the OU, including its DN
+                entry_info[entry.entry_dn] = {
+                    'type': 'Organizational Unit',
+                    'shape': 'triangle',
+                    'dn': entry.entry_dn
+                }
+
             # User
-            elif "organizationalPerson" in entry.objectClass:
+            elif any(entry_class in ["person", "inetOrgPerson", "organizationalPerson"] for entry_class in entry.objectClass):
                 print("User type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
                 entry_options['shape'] = 'ellipse'
             
             # Group
-            elif "groupOfNames" in entry.objectClass:
+            elif any(entry_class in ["groupOfNames", "groupOfUniqueNames"] for entry_class in entry.objectClass):
                 print("Group type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
@@ -414,9 +390,9 @@ class ORADLDAP:
                 for member_dn in member_dns:
                     member_cn = member_dn.split(',')[0].split('=')[1]
                     link = {'from': entry_options['id'], 'to': member_dn}
-                    print(link)
                     edges.append(link)
 
+            
             # Set predefined styles for the entry type
             style = style_mapping.get(entry.objectClass.value[-1], {'color': '#808080', 'size': 15})  # Default style
             entry_options.update(style)
@@ -424,11 +400,17 @@ class ORADLDAP:
             # Add entry node
             nodes.append(entry_options)
 
+        # Add edges for parent-child relationships
+        for dn, entry_data in entry_info.items():
+            # Infer parent DN from the current DN
+            parent_dn = ','.join(dn.split(',')[1:]) if ',' in dn else None
+            #if parent_dn in entry_info:
+            edges.append({'from': parent_dn, 'to': dn})
+
         # Write the data to a JSON file
         data = {'nodes': nodes, 'edges': edges}
         with open('render/ldap_data.json', 'w') as json_file:
             json.dump(data, json_file)
-
         return nodes, edges
     
     def _read_config(self):
@@ -456,10 +438,6 @@ class ORADLDAP:
 
     def Run(self):
         start_time = time.time()
-
-        # Security Checks
-        
-        #self.get_config_context()
         
         # ANONYMOUS
         self.check_anonymous_auth()
@@ -481,7 +459,6 @@ class ORADLDAP:
         self.check_anonymous_acl(strategy="ADMIN")
         self.check_password_write_permission(strategy="ADMIN")
         self.get_subentries(strategy="ADMIN")
-        self.check_nested_groups(group_dn="cn=admins,ou=Groups,dc=example,dc=com", strategy="ADMIN")
         self.collect_ldap_data(strategy="ADMIN")
         # Close connections
         self._disconnect()
