@@ -338,33 +338,32 @@ class ORADLDAP:
         # Predefined styles for entry types
         style_mapping = {
             'organization': {'shape': 'square', 'color': '#FF5733', 'size': 30},
-            'organizationalUnit': {'shape': 'box', 'color': {'border': '#2B7CE9', 'background': '#97C2FC', 'size': 15}},
+            'organizationalUnit':{'shape': 'diamond', 'color': '#5733FF', 'size': 25},
             'organizationalPerson': {'shape': 'ellipse', 'color': '#33FF57', 'size': 15},
-            'groupOfNames': {'shape': 'diamond', 'color': '#5733FF', 'size': 25},
+            'groupOfNames': {'shape': 'box', 'color': {'border': '#2B7CE9', 'background': '#97C2FC', 'size': 15}}
             # Add more entry types and styles as needed
         }
 
-        # Process LDAP entries
         entry_info = {}
         for entry in entries:
             id = None
             label = None
             entry_options = {'id': id, 'label': label}
-
-            #Organization
+            # Organization
             if "organization" in entry.objectClass:
                 print("Organization type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.o.value
-                entry_options['shape'] = 'square'
                 entry_options['group'] = 'organization'  # Set a group for organization nodes
+                style = style_mapping.get('organization', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
+                entry_options.update(style)
             # OU
             elif "organizationalUnit" in entry.objectClass:
                 print("Organizational Unit type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.ou.value
-                entry_options['shape'] = 'triangle'
-
+                style = style_mapping.get('organizationalUnit', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
+                entry_options.update(style)
                 # Store information about the OU, including its DN
                 entry_info[entry.entry_dn] = {
                     'type': 'Organizational Unit',
@@ -377,14 +376,20 @@ class ORADLDAP:
                 print("User type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
-                entry_options['shape'] = 'ellipse'
+                style = style_mapping.get('organizationalPerson', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
+                entry_options.update(style)
             
             # Group
-            elif any(entry_class in ["groupOfNames", "groupOfUniqueNames"] for entry_class in entry.objectClass):
+            elif any(entry_class in ["posixGroup","groupOfNames", "groupOfUniqueNames"] for entry_class in entry.objectClass):
                 print("Group type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
-                entry_options['shape'] = 'diamond'
+                style = style_mapping.get('groupOfNames', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
+                entry_options.update(style)
+            else:
+                return
+                # Check if the group has members before processing
+            if 'member' in entry:
                 # Add edges for group members
                 member_dns = [str(member) for member in entry.member]
                 for member_dn in member_dns:
@@ -392,19 +397,12 @@ class ORADLDAP:
                     link = {'from': entry_options['id'], 'to': member_dn}
                     edges.append(link)
 
-            
-            # Set predefined styles for the entry type
-            style = style_mapping.get(entry.objectClass.value[-1], {'color': '#808080', 'size': 15})  # Default style
-            entry_options.update(style)
-
             # Add entry node
             nodes.append(entry_options)
-
         # Add edges for parent-child relationships
         for dn, entry_data in entry_info.items():
             # Infer parent DN from the current DN
             parent_dn = ','.join(dn.split(',')[1:]) if ',' in dn else None
-            #if parent_dn in entry_info:
             edges.append({'from': parent_dn, 'to': dn})
 
         # Write the data to a JSON file
@@ -458,12 +456,12 @@ class ORADLDAP:
         self.check_default_acl_rule(strategy="ADMIN")
         self.check_anonymous_acl(strategy="ADMIN")
         self.check_password_write_permission(strategy="ADMIN")
+        # Report Generation
         self.get_subentries(strategy="ADMIN")
         self.collect_ldap_data(strategy="ADMIN")
         # Close connections
         self._disconnect()
 
-        # Report Generation
         self.report.generate_report()
         end_time = time.time()
         execution_time = round(end_time - start_time,2)
