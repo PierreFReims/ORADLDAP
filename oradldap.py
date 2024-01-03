@@ -104,6 +104,33 @@ class ORADLDAP:
         
         return parent_dn
 
+    def _get_group_members(self, group_dn, strategy="ANONYMOUS"):
+        # Connect to the LDAP server
+        connection = self._get_connection_by_strategy(strategy)
+        # Search for groups and their members
+        if not connection:
+            logging.warning('Invalid connection')
+            return 
+        connection.search(group_dn, "(objectClass=*)", SUBTREE, attributes=ALL_ATTRIBUTES)
+        entries = connection.entries
+        return entries[0].member
+
+    def _check_membership(self, user_dn, strategy="ANONYMOUS"):
+        membership = []
+        # Connect to the LDAP server
+        connection = self._get_connection_by_strategy(strategy)
+        # Search for groups and their members
+        if not connection:
+            logging.warning('Invalid connection')
+            return 
+        connection.search(self.naming_context, "(member={0})".format(user_dn), SUBTREE, attributes=ALL_ATTRIBUTES)
+        entries = connection.entries
+        for entry in entries:
+            membership.append(entry.entry_dn)
+        if len(membership) > 0:
+            return membership
+        else:
+            return None
     def get_config_context(self):
         if self.server:
             self.config_context = str(self.server.info).split("configContext:")[1].lstrip().split("\n")[0]
@@ -309,108 +336,6 @@ class ORADLDAP:
             except Exception as e:
                 print(f"Error checking password encryption: {e}")
 
-    def collect_ldap_data(self, strategy="ANONYMOUS"):
-        """
-        Collects information from an OpenLDAP directory and generates nodes and edges for a vis.js graph.
-
-        Returns:
-        - nodes (list): List of nodes for the vis.js graph.
-        - edges (list): List of edges for the vis.js graph.
-        """
-        # Connect to the LDAP server
-        connection = self._get_connection_by_strategy(strategy)
-        # Search for groups and their members
-        if not connection:
-            logging.warning('Invalid connection')
-            return [], []
-
-        connection.search(self.naming_context, "(objectClass=*)", SUBTREE, attributes=ALL_ATTRIBUTES)
-        entries = connection.entries
-        # Create nodes and edges for the vis.js graph
-        nodes = []
-        edges = []
-
-        # Predefined styles for entry types
-        style_mapping = {
-            'organization': {'shape': 'square', 'color': '#FF5733', 'size': 30},
-            'organizationalUnit':{'shape': 'diamond', 'color': '#5733FF', 'size': 25},
-            'organizationalPerson': {'shape': 'ellipse', 'color': '#33FF57', 'size': 15},
-            'groupOfNames': {'shape': 'box', 'color': {'border': '#2B7CE9', 'background': '#97C2FC', 'size': 15}}
-            # Add more entry types and styles as needed
-        }
-
-        entry_info = {}
-        for entry in entries:
-            id = None
-            label = None
-            entry_options = {'id': id, 'label': label}
-            # Organization
-            if "organization" in entry.objectClass:
-                #print("Organization type")
-                entry_options['id'] = entry.entry_dn
-                entry_options['label'] = entry.o.value
-                entry_options['group'] = 'organization'  # Set a group for organization nodes
-                style = style_mapping.get('organization', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
-                entry_options.update(style)
-            
-            # OU
-            elif "organizationalUnit" in entry.objectClass:
-                #print("Organizational Unit type")
-                entry_options['id'] = entry.entry_dn
-                entry_options['label'] = entry.ou.value
-                style = style_mapping.get('organizationalUnit', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
-                entry_options.update(style)
-                
-                # Store information about the OU, including its DN
-                entry_info[entry.entry_dn] = {
-                    'type': 'Organizational Unit',
-                    'shape': 'triangle',
-                    'dn': entry.entry_dn
-                }
-
-            # User
-            elif any(entry_class in ["person", "inetOrgPerson", "organizationalPerson"] for entry_class in entry.objectClass):
-                #print("User type")
-                entry_options['id'] = entry.entry_dn
-                entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
-                style = style_mapping.get('organizationalPerson', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
-                entry_options.update(style)
-            
-            # Group
-            elif any(entry_class in ["posixGroup","groupOfNames", "groupOfUniqueNames"] for entry_class in entry.objectClass):
-                #print("Group type")
-                entry_options['id'] = entry.entry_dn
-                entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
-                style = style_mapping.get('groupOfNames', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
-                entry_options.update(style)
-
-            else:
-                return
-                # Check if the group has members before processing
-            if 'member' in entry:
-                # Add edges for group members
-                member_dns = [str(member) for member in entry.member]
-                for member_dn in member_dns:
-                    member_cn = member_dn.split(',')[0].split('=')[1]
-                    link = {'from': entry_options['id'], 'to': member_dn}
-                    edges.append(link)
-
-            # Add entry node
-            nodes.append(entry_options)
-        
-        # Add edges for parent-child relationships
-        for dn, entry_data in entry_info.items():
-            
-            # Infer parent DN from the current DN
-            parent_dn = ','.join(dn.split(',')[1:]) if ',' in dn else None
-            edges.append({'from': parent_dn, 'to': dn})
-
-        # Write the data to a JSON file
-        data = {'nodes': nodes, 'edges': edges}
-        with open('render/ldap_data.json', 'w') as json_file:
-            json.dump(data, json_file)
-        return nodes, edges
-
     def data_collector(self, strategy="ANONYMOUS"):
         # Connect to the LDAP server
         connection = self._get_connection_by_strategy(strategy)
@@ -424,6 +349,7 @@ class ORADLDAP:
         
         nodes = []
         edges = []
+
         # Predefined styles for entry types
         style_mapping = {
             'organization': {'shape': 'square', 'color': '#FF5733', 'size': 30},
@@ -432,11 +358,11 @@ class ORADLDAP:
             'groupOfNames': {'shape': 'box', 'color': {'border': '#2B7CE9', 'background': '#97C2FC', 'size': 15}}
             # Add more entry types and styles as needed
         }
-        
+
         for entry in entries:
             dn = entry.entry_dn
             objectClass = entry.objectClass
-
+            parent_dn = None
             #Organization    
             if "organization" in objectClass:
                 label = entry.o.value
@@ -445,23 +371,33 @@ class ORADLDAP:
             elif "organizationalUnit" in objectClass:
                 label = entry.ou.value
                 style = style_mapping.get('organizationalUnit', {})
+                parent_dn = self._get_parent_dn(dn)
             # User
             elif any(entry_class in ["person", "inetOrgPerson", "organizationalPerson"] for entry_class in objectClass):
                 label = entry.cn.value[-1] if isinstance(entry.cn.value, list) else entry.cn.value
                 style = style_mapping.get('organizationalPerson', {})
+                membership = self._check_membership(dn)
+                if membership:
+                    parent_dn = membership[0]
+                else:
+                    parent_dn = self._get_parent_dn(dn)
             # Group
             elif any(entry_class in ["posixGroup","groupOfNames", "groupOfUniqueNames"] for entry_class in objectClass):
                 label = entry.cn.value[-1] if isinstance(entry.cn.value, list) else entry.cn.value
                 style = style_mapping.get('groupOfNames', {})
+                membership = self._check_membership(dn)
+                if membership:
+                    parent_dn = membership[0]
+                else:
+                    parent_dn = self._get_parent_dn(dn)
             else:
-                return
-            print(dn, label)
-            
+                logging.warning(f"Unknown entry type: {objectClass}")
+                continue
+
             # Add the current entry as a node
             nodes.append({"id": dn, "label": label,**style})
             
             # Check if the entry has a parent DN
-            parent_dn = self._get_parent_dn(dn)
             if parent_dn:
                 # Add an edge from the current entry to its parent
                 edges.append({"from": dn, "to": parent_dn, "label": "memberOf"})
@@ -516,13 +452,12 @@ class ORADLDAP:
         self.check_default_acl_rule(strategy="ADMIN")
         self.check_anonymous_acl(strategy="ADMIN")
         self.check_password_write_permission(strategy="ADMIN")
-        print(self.data_collector(strategy="ADMIN"))
+        self.data_collector(strategy="ADMIN")
 
-        # Report Generation
-        #self.collect_ldap_data(strategy="ADMIN")
         # Close connections
         self._disconnect()
 
+        # Report Generation
         self.report.generate_report()
         end_time = time.time()
         execution_time = round(end_time - start_time,2)
