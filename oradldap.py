@@ -91,6 +91,19 @@ class ORADLDAP:
         else:
             raise ValueError(f"Invalid strategy: {strategy}")
             
+    def _get_parent_dn(self,dn):
+        # If the DN has only one component, it means it's at the base level and has no parent
+        if dn == self.naming_context:
+            return None
+
+        # Split the DN into its components
+        dn_components = dn.split(',')
+
+        # Construct the parent DN by excluding the first component
+        parent_dn = ','.join(dn_components[1:])
+        
+        return parent_dn
+
     def get_config_context(self):
         if self.server:
             self.config_context = str(self.server.info).split("configContext:")[1].lstrip().split("\n")[0]
@@ -370,6 +383,7 @@ class ORADLDAP:
                 entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
                 style = style_mapping.get('groupOfNames', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
                 entry_options.update(style)
+
             else:
                 return
                 # Check if the group has members before processing
@@ -383,8 +397,10 @@ class ORADLDAP:
 
             # Add entry node
             nodes.append(entry_options)
+        
         # Add edges for parent-child relationships
         for dn, entry_data in entry_info.items():
+            
             # Infer parent DN from the current DN
             parent_dn = ','.join(dn.split(',')[1:]) if ',' in dn else None
             edges.append({'from': parent_dn, 'to': dn})
@@ -395,6 +411,57 @@ class ORADLDAP:
             json.dump(data, json_file)
         return nodes, edges
 
+    def data_collector(self, strategy="ANONYMOUS"):
+        # Connect to the LDAP server
+        connection = self._get_connection_by_strategy(strategy)
+        # Search for groups and their members
+        if not connection:
+            logging.warning('Invalid connection')
+            return [], []
+
+        connection.search(self.naming_context, "(objectClass=*)", SUBTREE, attributes=ALL_ATTRIBUTES)
+        entries = connection.entries
+        
+        nodes = []
+        edges = []
+
+        
+        
+        for entry in entries:
+            dn = entry.entry_dn
+            objectClass = entry.objectClass
+
+            #Organization    
+            if "organization" in objectClass:
+                label = entry.o.value
+            
+            # OU
+            elif "organizationalUnit" in objectClass:
+                label = entry.ou.value
+            # User
+            elif any(entry_class in ["person", "inetOrgPerson", "organizationalPerson"] for entry_class in objectClass):
+                label = entry.cn.value[-1] if isinstance(entry.cn.value, list) else entry.cn.value
+            # Group
+            elif any(entry_class in ["posixGroup","groupOfNames", "groupOfUniqueNames"] for entry_class in objectClass):
+                label = entry.cn.value[-1] if isinstance(entry.cn.value, list) else entry.cn.value
+            else:
+                return
+            print(dn, label)
+            
+            # Add the current entry as a node
+            nodes.append({"id": dn, "label": label})
+            
+            # Check if the entry has a parent DN
+            parent_dn = self._get_parent_dn(dn)
+            if parent_dn:
+                # Add an edge from the current entry to its parent
+                edges.append({"from": dn, "to": parent_dn, "label": "memberOf"})
+        # Write the data to a JSON file
+        data = {'nodes': nodes, 'edges': edges}
+        with open('render/ldap_data.json', 'w') as json_file:
+            json.dump(data, json_file)
+        return nodes, edges
+    
     def _read_config(self):
         try:
             with open(self.config_path) as f:
@@ -425,13 +492,11 @@ class ORADLDAP:
         self.check_anonymous_auth()
         self.get_naming_context(strategy="ANONYMOUS")
         self.check_user_password_encryption(strategy="ANONYMOUS")
-        self.get_subentries(strategy="ANONYMOUS")
         self.check_password_write_permission(strategy="ANONYMOUS")
 
         # AUTHENTICATED USER
         self.get_naming_context(strategy="AUTHENTICATED")
         self.check_user_password_encryption(strategy="AUTHENTICATED")
-        self.get_subentries(strategy="AUTHENTICATED")
         self.check_password_write_permission(strategy="AUTHENTICATED")
         
         # ADMIN USER
@@ -442,10 +507,10 @@ class ORADLDAP:
         self.check_default_acl_rule(strategy="ADMIN")
         self.check_anonymous_acl(strategy="ADMIN")
         self.check_password_write_permission(strategy="ADMIN")
-        
+        print(self.data_collector(strategy="ADMIN"))
+
         # Report Generation
-        self.get_subentries(strategy="ADMIN")
-        self.collect_ldap_data(strategy="ADMIN")
+        #self.collect_ldap_data(strategy="ADMIN")
         # Close connections
         self._disconnect()
 
