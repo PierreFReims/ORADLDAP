@@ -424,8 +424,14 @@ class ORADLDAP:
         
         nodes = []
         edges = []
-
-        
+        # Predefined styles for entry types
+        style_mapping = {
+            'organization': {'shape': 'square', 'color': '#FF5733', 'size': 30},
+            'organizationalUnit':{'shape': 'diamond', 'color': '#5733FF', 'size': 25},
+            'organizationalPerson': {'shape': 'ellipse', 'color': '#33FF57', 'size': 15},
+            'groupOfNames': {'shape': 'box', 'color': {'border': '#2B7CE9', 'background': '#97C2FC', 'size': 15}}
+            # Add more entry types and styles as needed
+        }
         
         for entry in entries:
             dn = entry.entry_dn
@@ -434,22 +440,25 @@ class ORADLDAP:
             #Organization    
             if "organization" in objectClass:
                 label = entry.o.value
-            
+                style = style_mapping.get('organization', {})
             # OU
             elif "organizationalUnit" in objectClass:
                 label = entry.ou.value
+                style = style_mapping.get('organizationalUnit', {})
             # User
             elif any(entry_class in ["person", "inetOrgPerson", "organizationalPerson"] for entry_class in objectClass):
                 label = entry.cn.value[-1] if isinstance(entry.cn.value, list) else entry.cn.value
+                style = style_mapping.get('organizationalPerson', {})
             # Group
             elif any(entry_class in ["posixGroup","groupOfNames", "groupOfUniqueNames"] for entry_class in objectClass):
                 label = entry.cn.value[-1] if isinstance(entry.cn.value, list) else entry.cn.value
+                style = style_mapping.get('groupOfNames', {})
             else:
                 return
             print(dn, label)
             
             # Add the current entry as a node
-            nodes.append({"id": dn, "label": label})
+            nodes.append({"id": dn, "label": label,**style})
             
             # Check if the entry has a parent DN
             parent_dn = self._get_parent_dn(dn)
