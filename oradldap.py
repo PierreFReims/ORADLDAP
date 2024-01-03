@@ -112,24 +112,6 @@ class ORADLDAP:
             except Exception as e:
                 raise ValueError(f"Error retrieving naming context: {e}")
             return self.naming_context
-
-    def get_subentries(self,strategy="ANONYMOUS"):
-
-        connection = self._get_connection_by_strategy(strategy)
-        if connection:
-            print(f"{strategy} - Getting naming context")
-            connection.search(self.naming_context, "(objectClass=*)", attributes="*")
-            if connection.entries:
-                for entry in connection.entries:
-                    entry.entry_to_json()
-        if strategy == "ANONYMOUS":
-            var = ''
-        elif strategy == "AUTHENTICATED":
-            var = ''
-        elif strategy == "ADMIN":
-            var = ''
-        else:
-            raise ValueError(f"Invalid strategy: {strategy}")
     
     def check_anonymous_auth(self):
         print("ANONYMOUS - Check anonymous auths")
@@ -351,19 +333,21 @@ class ORADLDAP:
             entry_options = {'id': id, 'label': label}
             # Organization
             if "organization" in entry.objectClass:
-                print("Organization type")
+                #print("Organization type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.o.value
                 entry_options['group'] = 'organization'  # Set a group for organization nodes
                 style = style_mapping.get('organization', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
                 entry_options.update(style)
+            
             # OU
             elif "organizationalUnit" in entry.objectClass:
-                print("Organizational Unit type")
+                #print("Organizational Unit type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.ou.value
                 style = style_mapping.get('organizationalUnit', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
                 entry_options.update(style)
+                
                 # Store information about the OU, including its DN
                 entry_info[entry.entry_dn] = {
                     'type': 'Organizational Unit',
@@ -373,7 +357,7 @@ class ORADLDAP:
 
             # User
             elif any(entry_class in ["person", "inetOrgPerson", "organizationalPerson"] for entry_class in entry.objectClass):
-                print("User type")
+                #print("User type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
                 style = style_mapping.get('organizationalPerson', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
@@ -381,7 +365,7 @@ class ORADLDAP:
             
             # Group
             elif any(entry_class in ["posixGroup","groupOfNames", "groupOfUniqueNames"] for entry_class in entry.objectClass):
-                print("Group type")
+                #print("Group type")
                 entry_options['id'] = entry.entry_dn
                 entry_options['label'] = entry.cn.values[-1] if 'cn' in entry else []
                 style = style_mapping.get('groupOfNames', {'shape': 'ellipse', 'color': '#808080', 'size': 15})  # Default style
@@ -410,7 +394,7 @@ class ORADLDAP:
         with open('render/ldap_data.json', 'w') as json_file:
             json.dump(data, json_file)
         return nodes, edges
-    
+
     def _read_config(self):
         try:
             with open(self.config_path) as f:
@@ -442,11 +426,13 @@ class ORADLDAP:
         self.get_naming_context(strategy="ANONYMOUS")
         self.check_user_password_encryption(strategy="ANONYMOUS")
         self.get_subentries(strategy="ANONYMOUS")
-        
+        self.check_password_write_permission(strategy="ANONYMOUS")
+
         # AUTHENTICATED USER
         self.get_naming_context(strategy="AUTHENTICATED")
         self.check_user_password_encryption(strategy="AUTHENTICATED")
         self.get_subentries(strategy="AUTHENTICATED")
+        self.check_password_write_permission(strategy="AUTHENTICATED")
         
         # ADMIN USER
         self.get_naming_context(strategy="ADMIN")
@@ -456,6 +442,7 @@ class ORADLDAP:
         self.check_default_acl_rule(strategy="ADMIN")
         self.check_anonymous_acl(strategy="ADMIN")
         self.check_password_write_permission(strategy="ADMIN")
+        
         # Report Generation
         self.get_subentries(strategy="ADMIN")
         self.collect_ldap_data(strategy="ADMIN")
