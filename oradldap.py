@@ -167,21 +167,22 @@ class ORADLDAP:
             print(f"{strategy} - Checking anonymous ACLs")
             try:
                 connection.search(search_base='olcDatabase={1}mdb,cn=config', search_filter='(objectClass=*)', search_scope='BASE', attributes=['olcAccess'])
-                if not len(connection.entries) == 0:
-                    print(connection.entries)
-                    acls = str(connection.entries[0]).split("olcAccess:")[1].split("\n")
-                    userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
-                    by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
-                    for acl in acls:
-                        acl = acl.strip()
-                        match = re.search(userPassword_attribute, acl)
-                        if match:
-                            matches = by_pattern.findall(acl)
-                            # Check if 'anonymous' has permissions other than 'none'
-                            anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
-                            if 'none' not in anonymous_permissions:
-                                self.report.add_vulnerability('vuln_anonymous_dangerous_perms')
-                            return anonymous_permissions        
+                if len(connection.entries) == 0:
+                    return
+                print(connection.entries)
+                acls = str(connection.entries[0]).split("olcAccess:")[1].split("\n")
+                userPassword_attribute = re.compile(r'\bto\s+attrs=userPassword\s+', re.IGNORECASE)
+                by_pattern = re.compile(r'by\s+([^\s]+)\s+(\w+)(?=\s+by|$)', re.IGNORECASE)
+                for acl in acls:
+                    acl = acl.strip()
+                    match = re.search(userPassword_attribute, acl)
+                    if match:
+                        matches = by_pattern.findall(acl)
+                        # Check if 'anonymous' has permissions other than 'none'
+                        anonymous_permissions = [permission for entity, permission in matches if entity == 'anonymous']
+                        if 'none' not in anonymous_permissions:
+                            self.report.add_vulnerability('vuln_anonymous_dangerous_perms')
+                        return anonymous_permissions        
 
             except Exception as e:
                 # Handle the exception as needed
@@ -224,13 +225,6 @@ class ORADLDAP:
                         # Print the results
                         if dangerous_permissions:
                             self.report.add_vulnerability('vuln_dangerous_acls')
-                            #print("Dangerous permissions found:")
-                            for entry in dangerous_permissions:
-                                var = 'ok'
-                                #print(f"Target Attribute: {entry['target_attribute']}, Entity: {entry['entity']}, Permission Type: {entry['permission_type']}")
-                        else:
-                            var = 'ok'
-                            #print("No dangerous permissions found.")
 
             except Exception as e:
                 logging.error(f"Error checking ACLs: {e}")
@@ -353,7 +347,7 @@ class ORADLDAP:
         # Predefined styles for entry types
         style_mapping = {
             'organization': {'shape': 'square', 'color': '#FF5733', 'size': 30},
-            'organizationalUnit':{'shape': 'diamond', 'color': '#5733FF', 'size': 25},
+            'organizationalUnit':{'shape': 'triangle', 'color': '#5733FF', 'size': 25},
             'organizationalPerson': {'shape': 'ellipse', 'color': '#33FF57', 'size': 15},
             'groupOfNames': {'shape': 'box', 'color': {'border': '#2B7CE9', 'background': '#97C2FC', 'size': 15}}
             # Add more entry types and styles as needed
@@ -378,7 +372,7 @@ class ORADLDAP:
                 style = style_mapping.get('organizationalPerson', {})
                 membership = self._check_membership(dn)
                 if membership:
-                    parent_dn = membership[0]
+                    parent_dn = membership[0] # <= if the entry is member of multiple groups, create a function later on to determine the most critical parent
                 else:
                     parent_dn = self._get_parent_dn(dn)
             # Group
@@ -387,7 +381,7 @@ class ORADLDAP:
                 style = style_mapping.get('groupOfNames', {})
                 membership = self._check_membership(dn)
                 if membership:
-                    parent_dn = membership[0]
+                    parent_dn = membership[0] # <= if the entry is member of multiple groups, create a function later on to determine the most critical parent
                 else:
                     parent_dn = self._get_parent_dn(dn)
             else:
@@ -401,6 +395,7 @@ class ORADLDAP:
             if parent_dn:
                 # Add an edge from the current entry to its parent
                 edges.append({"from": dn, "to": parent_dn, "label": "memberOf"})
+
         # Write the data to a JSON file
         data = {'nodes': nodes, 'edges': edges}
         with open('render/ldap_data.json', 'w') as json_file:
